@@ -18,10 +18,10 @@ CSV = "0.10.15"
 CairoMakie = "0.15.8"
 Colors = "0.13.1"
 DataFrames = "1.8.1"
-GeometryBasics = "0.5.10"
+GeometryBasics = "0.5"
 Makie = "0.24.8"
 Reexport = "1.2.2"
-Test = "1.11.0"
+Test = "1"
 
 [extras]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"

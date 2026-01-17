@@ -1,0 +1,44 @@
+name: Documentation
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags: ['*']
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
+      - uses: julia-actions/cache@v2
+        with:
+          actions-version: 'v2.0.0'
+      - name: Install dependencies
+        run: |
+          cd docs
+          julia --project=. -e '
+            using Pkg
+            docs_dir = pwd()
+            root_dir = dirname(docs_dir)
+            Pkg.develop(PackageSpec(path=root_dir))
+            Pkg.instantiate()
+          '
+      - name: Build documentation
+        run: |
+          cd docs
+          julia --project=. make.jl
+      - name: Deploy documentation
+        uses: peaceiris/actions-gh-pages@v3
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/build

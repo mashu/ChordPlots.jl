@@ -1,0 +1,25 @@
+# Julia
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+Manifest.toml
+*.toml.bak
+
+# Documentation
+docs/build/
+docs/site/
+
+# Examples output
+*.png
+!docs/src/assets/examples/*.png
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
