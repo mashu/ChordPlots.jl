@@ -1,4 +1,5 @@
 # ChordPlots.jl
+![chordplots_logo](https://github.com/user-attachments/assets/83f44cf6-e791-47e7-acbe-f36c8bfd1add)
 
 A Julia package for creating beautiful chord diagrams with Makie. Visualize co-occurrence relationships between categorical variables.
 
