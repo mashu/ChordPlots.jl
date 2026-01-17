@@ -231,32 +231,58 @@ struct LabelPosition
 end
 
 """
-    label_position(arc::ArcSegment, radius::Real, offset::Real; rotate::Bool=true)
+    label_position(arc::ArcSegment, radius::Real, offset::Real; rotate::Bool=true, justify::Symbol=:inside)
 
 Calculate position for an arc's label.
+
+# Arguments
+- `arc`: Arc segment
+- `radius`: Outer radius of the arc
+- `offset`: Distance from arc to label
+- `rotate`: Whether to rotate label to follow arc
+- `justify`: Label justification (`:inside` aligns toward circle center, `:outside` aligns away)
 """
 function label_position(
     arc::ArcSegment{T},
     radius::Real,
     offset::Real;
-    rotate::Bool = true
+    rotate::Bool = true,
+    justify::Symbol = :inside
 )::LabelPosition where T
     
     mid_angle = arc_midpoint(arc)
     label_radius = radius + offset
     point = angle_to_point(mid_angle, label_radius)
     
-    # Determine alignment based on angle
-    # Right half of circle: left-aligned labels
-    # Left half: right-aligned labels
+    # Determine alignment and rotation based on angle
+    # Normalize angle to [0, 2π] for easier handling
+    normalized_angle = mod(mid_angle, 2π)
+    
     if rotate
-        # Rotate label to be tangent to circle
-        if -π/2 <= mid_angle <= π/2
-            rotation = mid_angle
-            halign = :left
+        # Rotate label to be tangent to circle, always readable (not upside down)
+        # For angles in [0, π/2] and [3π/2, 2π]: rotate normally
+        # For angles in [π/2, 3π/2]: flip 180° to keep text right-side up
+        if normalized_angle <= π/2 || normalized_angle >= 3π/2
+            rotation = normalized_angle
+            # Right side: justify based on preference
+            if justify == :inside
+                halign = :right  # Align right edge toward circle
+            else
+                halign = :left   # Align left edge away from circle
+            end
         else
-            rotation = mid_angle + π  # Flip for readability
-            halign = :right
+            # Left side: flip to keep text readable
+            rotation = normalized_angle + π
+            # Left side: justify based on preference
+            if justify == :inside
+                halign = :left   # Align left edge toward circle
+            else
+                halign = :right  # Align right edge away from circle
+            end
+        end
+        # Normalize rotation to [-π, π] for better rendering
+        if rotation > π
+            rotation -= 2π
         end
     else
         rotation = 0.0
@@ -270,6 +296,10 @@ end
     label_positions(arcs::Vector{ArcSegment{T}}, radius::Real, offset::Real; kwargs...)
 
 Calculate positions for all arc labels.
+
+# Keyword Arguments
+- `rotate::Bool=true`: Whether to rotate labels to follow arcs
+- `justify::Symbol=:inside`: Label justification (`:inside` or `:outside`)
 """
 function label_positions(
     arcs::Vector{ArcSegment{T}},

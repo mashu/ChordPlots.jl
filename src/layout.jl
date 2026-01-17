@@ -29,7 +29,7 @@ end
 
 # Default constructor with Float64 type
 function LayoutConfig(;
-    inner_radius::Real = 0.8,
+    inner_radius::Real = 0.92,  # Closer to outer_radius to reduce wasted space
     outer_radius::Real = 1.0,
     gap_fraction::Real = 0.05,
     start_angle::Real = π/2,

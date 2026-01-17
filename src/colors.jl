@@ -55,34 +55,155 @@ struct GradientColorScheme <: AbstractColorScheme
 end
 
 #==============================================================================#
+# Color Palettes
+#==============================================================================#
+
+"""
+    _wong_palette() -> Vector{RGB{Float64}}
+
+Returns Wong's colorblind-friendly palette (same as Makie/AoG default).
+These are eye-catching but not garish, professional colors.
+"""
+function _wong_palette()::Vector{RGB{Float64}}
+    # Wong's colorblind-friendly palette (same as Makie/AoG uses)
+    # From: Wong, B. (2011). Points of view: Color blindness. Nature Methods, 8(6), 441.
+    [
+        RGB(0.0, 0.4470588235294118, 0.6980392156862745),    # Blue
+        RGB(0.0, 0.6196078431372549, 0.45098039215686275),    # Green
+        RGB(0.8352941176470589, 0.3686274509803922, 0.0),     # Orange
+        RGB(0.8, 0.47450980392156861, 0.6549019607843137),     # Pink
+        RGB(0.9411764705882353, 0.8941176470588236, 0.25882352941176473), # Yellow
+        RGB(0.33725490196078434, 0.7058823529411765, 0.9137254901960784), # Sky Blue
+        RGB(0.0, 0.6196078431372549, 0.45098039215686275),    # Bluish Green
+        RGB(0.9019607843137255, 0.6235294117647059, 0.0),     # Vermillion
+    ]
+end
+
+"""
+    _modern_palette() -> Vector{RGB{Float64}}
+
+Returns a curated modern, professional color palette.
+Colors are chosen for visual appeal, professionalism, and good contrast.
+"""
+function _modern_palette()::Vector{RGB{Float64}}
+    # Modern, professional palette inspired by contemporary design systems
+    # Colors are vibrant but not garish, professional and pleasant
+    # Optimized for data visualization with good contrast and accessibility
+    [
+        RGB(0.25882352941176473, 0.5725490196078431, 0.7764705882352941),   # Modern Blue
+        RGB(0.9568627450980393, 0.42745098039215684, 0.2627450980392157),   # Coral/Orange
+        RGB(0.19607843137254902, 0.7137254901960784, 0.4823529411764706),   # Teal/Green
+        RGB(0.5490196078431373, 0.33725490196078434, 0.29411764705882354),   # Warm Brown
+        RGB(0.7803921568627451, 0.47450980392156861, 0.7764705882352941),   # Soft Purple
+        RGB(0.9450980392156862, 0.7686274509803922, 0.058823529411764705),  # Golden Yellow
+        RGB(0.12156862745098039, 0.4666666666666667, 0.7058823529411765),   # Deep Blue
+        RGB(0.8392156862745098, 0.3764705882352941, 0.0),                   # Burnt Orange
+        RGB(0.17254901960784313, 0.6274509803921569, 0.17254901960784313), # Forest Green
+        RGB(0.5803921568627451, 0.403921568627451, 0.7411764705882353),    # Rich Purple
+        RGB(0.8901960784313725, 0.10196078431372549, 0.10980392156862745), # Modern Red
+        RGB(0.0, 0.6196078431372549, 0.45098039215686275),                  # Emerald
+        RGB(0.7372549019607844, 0.7411764705882353, 0.13333333333333333),  # Olive
+        RGB(0.09019607843137255, 0.7450980392156863, 0.8117647058823529),  # Cyan
+        RGB(0.6196078431372549, 0.8549019607843137, 0.8980392156862745),   # Sky Blue
+        RGB(0.9921568627450981, 0.6823529411764706, 0.3803921568627451),    # Peach
+        RGB(0.6980392156862745, 0.6705882352941176, 0.8235294117647058),   # Lavender
+        RGB(0.8627450980392157, 0.2980392156862745, 0.22745098039215686),  # Rust Red
+        RGB(0.3411764705882353, 0.34901960784313724, 0.3803921568627451),   # Charcoal
+        RGB(0.5294117647058824, 0.807843137254902, 0.9215686274509803),    # Light Cyan
+    ]
+end
+
+"""
+    _get_colors_for_count(n::Int) -> Vector{RGB{Float64}}
+
+Returns n colors from the modern palette, cycling if needed.
+"""
+function _get_colors_for_count(n::Int)::Vector{RGB{Float64}}
+    palette = _modern_palette()
+    if n <= length(palette)
+        return palette[1:n]
+    else
+        # Cycle through palette if we need more colors
+        result = RGB{Float64}[]
+        for i in 1:n
+            push!(result, palette[mod1(i, length(palette))])
+        end
+        return result
+    end
+end
+
+#==============================================================================#
 # Color Scheme Construction
 #==============================================================================#
 
 """
-    group_colors(cooc::CoOccurrenceMatrix; palette=:Set1)
+    group_colors(cooc::CoOccurrenceMatrix; palette=:default)
 
-Create a color scheme based on groups.
+Create a color scheme based on groups using Makie's default categorical palette
+(same as AlgebraOfGraphics uses - Wong colors, colorblind-friendly).
+
+# Arguments
+- `palette::Symbol`: Color palette style (`:default` for Makie/AoG palette, `:modern` for custom)
 """
-function group_colors(cooc::CoOccurrenceMatrix; palette::Symbol = :Set1)
+function group_colors(cooc::CoOccurrenceMatrix; palette::Symbol = :default)
     n_groups = ngroups(cooc)
-    colors = distinguishable_colors(n_groups, [RGB(1,1,1), RGB(0,0,0)], dropseed=true)
+    
+    if palette == :default
+        # Use Wong's colorblind-friendly palette (same as Makie/AoG default)
+        # This gives us eye-catching but not garish, professional colors
+        wong = _wong_palette()
+        colors = wong[1:min(n_groups, length(wong))]
+        # If we need more colors, cycle through the palette
+        if n_groups > length(colors)
+            for i in (length(colors)+1):n_groups
+                push!(colors, wong[mod1(i, length(wong))])
+            end
+        end
+    else
+        # Fallback to modern palette
+        colors = _get_colors_for_count(n_groups)
+    end
     
     group_color_dict = Dict{Symbol, RGB{Float64}}()
     for (i, group) in enumerate(cooc.groups)
-        group_color_dict[group.name] = colors[i]
+        # Convert to RGB if needed
+        c = colors[i]
+        if c isa RGB
+            group_color_dict[group.name] = c
+        else
+            group_color_dict[group.name] = RGB(c)
+        end
     end
     
-    GroupColorScheme(group_color_dict, RGB(0.5, 0.5, 0.5))
+    # Modern neutral gray for defaults
+    GroupColorScheme(group_color_dict, RGB(0.4, 0.4, 0.4))
 end
 
 """
-    categorical_colors(n::Int; palette=:Set1)
+    categorical_colors(n::Int; palette=:default)
 
-Create n distinguishable colors.
+Create n distinguishable colors using Makie's default categorical palette
+(same as AlgebraOfGraphics uses - Wong colors, colorblind-friendly).
+
+# Arguments
+- `palette::Symbol`: Color palette style (`:default` for Makie/AoG palette, `:modern` for custom)
 """
-function categorical_colors(n::Int; kwargs...)
-    colors = distinguishable_colors(n, [RGB(1,1,1), RGB(0,0,0)], dropseed=true)
-    CategoricalColorScheme(colors)
+function categorical_colors(n::Int; palette::Symbol = :default)
+    if palette == :default
+        # Use Wong's colorblind-friendly palette (same as Makie/AoG default)
+        wong = _wong_palette()
+        colors = wong[1:min(n, length(wong))]
+        # If we need more colors, cycle through the palette
+        if n > length(colors)
+            for i in (length(colors)+1):n
+                push!(colors, wong[mod1(i, length(wong))])
+            end
+        end
+        CategoricalColorScheme(colors)
+    else
+        colors = _get_colors_for_count(n)
+        CategoricalColorScheme(colors)
+    end
 end
 
 """
