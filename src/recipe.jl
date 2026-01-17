@@ -28,6 +28,7 @@ Create a chord diagram from co-occurrence data.
 - `label_fontsize = 10`: Label font size
 - `rotate_labels = true`: Rotate labels to follow arcs (prevents upside-down text)
 - `label_justify = :inside`: Label justification (`:inside` aligns toward circle center, `:outside` aligns away)
+- `min_arc_flow = 0`: Filter out arcs and labels with total flow below this value (helps reduce overlap from many small segments)
 - `colorscheme = :group`: Color scheme (:group, :categorical, or AbstractColorScheme)
 - `arc_strokewidth = 0.5`: Arc border width
 - `arc_strokecolor = :black`: Arc border color
@@ -72,6 +73,7 @@ fig, ax, plt = chordplot(cooc)
         rotate_labels = true,
         label_color = :black,
         label_justify = :inside,  # :inside (toward circle) or :outside (away from circle)
+        min_arc_flow = 0,  # Filter out arcs (and labels) with total flow below this value
         
         # Colors
         colorscheme = :group,
@@ -94,8 +96,42 @@ function Makie.plot!(p::ChordPlotType)
     # Extract observables
     cooc_obs = p[:cooc]
     
+    # Filter co-occurrence matrix by minimum arc flow if specified
+    filtered_cooc_obs = lift(cooc_obs, p.min_arc_flow) do cooc, min_flow
+        if min_flow > 0
+            # Filter out labels with total flow below threshold
+            flows = [total_flow(cooc, i) for i in 1:nlabels(cooc)]
+            keep_indices = [i for i in 1:nlabels(cooc) if flows[i] >= min_flow]
+            
+            if length(keep_indices) < nlabels(cooc)
+                # Create filtered matrix
+                new_matrix = cooc.matrix[keep_indices, keep_indices]
+                new_labels = cooc.labels[keep_indices]
+                
+                # Rebuild groups with only remaining labels
+                # Extract type parameters from cooc
+                T = eltype(cooc.matrix)
+                S = eltype(cooc.labels)
+                new_groups = GroupInfo{S}[]
+                idx = 1
+                for g in cooc.groups
+                    group_mask = [i in g.indices for i in keep_indices]
+                    remaining = new_labels[group_mask]
+                    if !isempty(remaining)
+                        n_remaining = length(remaining)
+                        push!(new_groups, GroupInfo{S}(g.name, remaining, idx:idx+n_remaining-1))
+                        idx += n_remaining
+                    end
+                end
+                
+                return CoOccurrenceMatrix{T, S}(new_matrix, new_labels, new_groups)
+            end
+        end
+        cooc
+    end
+    
     # Reactive computations
-    layout_obs = lift(cooc_obs, p.inner_radius, p.outer_radius, p.gap_fraction, p.sort_by) do cooc, ir, or, gf, sb
+    layout_obs = lift(filtered_cooc_obs, p.inner_radius, p.outer_radius, p.gap_fraction, p.sort_by) do cooc, ir, or, gf, sb
         config = LayoutConfig(
             inner_radius = ir,
             outer_radius = or,
@@ -114,8 +150,8 @@ function Makie.plot!(p::ChordPlotType)
         end
     end
     
-    # Color scheme
-    colorscheme_obs = lift(cooc_obs, p.colorscheme) do cooc, cs
+    # Color scheme (use filtered cooc for consistency)
+    colorscheme_obs = lift(filtered_cooc_obs, p.colorscheme) do cooc, cs
         if cs == :group
             group_colors(cooc)
         elseif cs == :categorical
@@ -128,13 +164,13 @@ function Makie.plot!(p::ChordPlotType)
     end
     
     # Draw ribbons first (behind arcs)
-    _draw_ribbons!(p, cooc_obs, filtered_layout_obs, colorscheme_obs)
+    _draw_ribbons!(p, filtered_cooc_obs, filtered_layout_obs, colorscheme_obs)
     
     # Draw arcs
-    _draw_arcs!(p, cooc_obs, layout_obs, colorscheme_obs)
+    _draw_arcs!(p, filtered_cooc_obs, layout_obs, colorscheme_obs)
     
     # Draw labels
-    _draw_labels!(p, cooc_obs, layout_obs)
+    _draw_labels!(p, filtered_cooc_obs, layout_obs)
     
     p
 end
