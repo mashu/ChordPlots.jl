@@ -1,6 +1,6 @@
 name = "ChordPlots"
 uuid = "e0224685-ada7-484b-b848-3b026668d1bd"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["Mateusz Kaduk <mateusz.kaduk@gmail.com>"]
 
 [deps]
@@ -14,6 +14,7 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
+julia = "1.10"
 CSV = "0.10.15"
 CairoMakie = "0.15.8"
 Colors = "0.13.1"
