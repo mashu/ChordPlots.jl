@@ -1,9 +1,9 @@
 using Pkg
-Pkg.activate(".")
+# Activate docs env by path so this works when run from repo root (e.g. julia --project=docs docs/make.jl)
+docs_dir = @__DIR__
+Pkg.activate(docs_dir)
 
 # Develop the local package (not registered)
-# @__DIR__ is docs/, so go up one level to get package root
-docs_dir = @__DIR__
 root_dir = dirname(docs_dir)
 Pkg.develop(PackageSpec(path=root_dir))
 

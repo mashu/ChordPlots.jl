@@ -97,6 +97,19 @@ using Colors
             layout = compute_layout(mean_norm)
             @test narcs(layout) == nlabels(mean_norm)
         end
+        
+        @testset "mean_normalized with different labels per donor" begin
+            df1 = DataFrame(V=["V1", "V1"], D=["D1", "D2"], J=["J1", "J1"])
+            df2 = DataFrame(V=["V2", "V2"], D=["D1", "D1"], J=["J1", "J2"])
+            cooc1 = cooccurrence_matrix(df1, [:V, :D, :J])
+            cooc2 = cooccurrence_matrix(df2, [:V, :D, :J])
+            @test cooc1.labels != cooc2.labels
+            combined = mean_normalized([cooc1, cooc2])
+            @test combined isa ChordPlots.NormalizedCoOccurrenceMatrix
+            @test sum(combined.matrix) ≈ 1.0
+            @test length(combined.labels) == 6
+            @test "V1" in combined.labels && "V2" in combined.labels
+        end
     end
     
     @testset "Layout Computation" begin

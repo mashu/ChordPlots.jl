@@ -58,12 +58,12 @@ cooc = cooccurrence_matrix(df, [:V, :D, :J])
 cooc_norm = normalize(cooc)  # returns NormalizedCoOccurrenceMatrix
 ```
 
-To combine multiple matrices (e.g. one per donor/sample), normalize each by its own total sum then take the element-wise mean. All matrices must have the same labels and group structure:
+To combine multiple matrices (e.g. one per donor/sample), use `mean_normalized(coocs)`: each matrix is normalized by its own total sum and the element-wise mean is taken. When label sets differ across matrices, they are aligned to the union of all labels (missing entries as zero). Same group structure (group names and order) is required.
 
 ```julia
 coocs = [cooccurrence_matrix(df_i, cols) for df_i in list_of_dfs]
-combined = mean_normalized(coocs)  # NormalizedCoOccurrenceMatrix, sums to 1
-chordplot(combined; min_ribbon_value=0.001)  # use small thresholds for frequency scale
+combined = mean_normalized(coocs)
+chordplot(combined; min_ribbon_value=0.001)
 ```
 
 Both `CoOccurrenceMatrix` (counts) and `NormalizedCoOccurrenceMatrix` (frequencies) work with `chordplot`, `compute_layout`, and the rest of the API.

@@ -231,31 +231,74 @@ normalize(cooc::NormalizedCoOccurrenceMatrix) = NormalizedCoOccurrenceMatrix(
     copy(cooc.matrix), copy(cooc.labels), copy(cooc.groups); check_sum=false
 )
 
+# Union of labels across matrices: all labels from all coocs are kept (no discarding).
+# Group order from first cooc; within each group, union of labels, sorted.
+function union_labels_and_groups(coocs::AbstractVector{<:AbstractChordData})
+    isempty(coocs) && throw(ArgumentError("at least one matrix required"))
+    first_cooc = coocs[1]
+    group_names = [g.name for g in first_cooc.groups]
+    union_labels = String[]
+    new_groups = GroupInfo{String}[]
+    idx = 1
+    for gname in group_names
+        labels_in_group = Set{String}()
+        for c in coocs
+            for g in c.groups
+                if g.name == gname
+                    for l in g.labels
+                        push!(labels_in_group, l)
+                    end
+                    break
+                end
+            end
+        end
+        sorted_labels = sort(collect(labels_in_group))
+        n_here = length(sorted_labels)
+        push!(new_groups, GroupInfo{String}(gname, sorted_labels, idx:(idx + n_here - 1)))
+        append!(union_labels, sorted_labels)
+        idx += n_here
+    end
+    (union_labels, new_groups)
+end
+
+function expand_cooc_to_canonical(cooc::AbstractChordData, canonical_labels::Vector{String}, canonical_groups::Vector{GroupInfo{String}})
+    n = length(canonical_labels)
+    to_cooc = zeros(Int, n)
+    for (i, l) in enumerate(canonical_labels)
+        to_cooc[i] = get(cooc.label_to_index, l, 0)
+    end
+    mat = zeros(Float64, n, n)
+    for i in 1:n
+        ii = to_cooc[i]
+        for j in 1:n
+            jj = to_cooc[j]
+            if ii > 0 && jj > 0
+                mat[i, j] = cooc.matrix[ii, jj]
+            end
+        end
+    end
+    CoOccurrenceMatrix(mat, copy(canonical_labels), copy(canonical_groups))
+end
+
 """
     mean_normalized(coocs::AbstractVector{<:AbstractChordData}) -> NormalizedCoOccurrenceMatrix
 
-Combine multiple co-occurrence matrices (e.g. one per donor/sample) by normalizing
-each matrix by its **own total sum** (so each sums to 1), then taking the
-element-wise mean of these normalized matrices. All inputs must have the same
-labels and groups (in the same order). The result sums to 1.
+Combine multiple co-occurrence matrices by normalizing each by its own total sum
+and taking the element-wise mean. Result sums to 1. Matrices may have different
+labels; they are aligned to the union of all labels (per group), missing entries as zero.
 """
 function mean_normalized(coocs::AbstractVector{<:AbstractChordData})
     isempty(coocs) && throw(ArgumentError("mean_normalized requires at least one matrix"))
-    first_cooc = coocs[1]
-    labels = first_cooc.labels
-    groups = first_cooc.groups
-    n = length(labels)
-    for c in coocs
-        c.labels == labels || throw(ArgumentError("mean_normalized: all matrices must have the same labels in the same order"))
-        size(c.matrix) == (n, n) || throw(DimensionMismatch("mean_normalized: all matrices must be $n×$n"))
-    end
+    canonical_labels, canonical_groups = union_labels_and_groups(coocs)
+    aligned = [expand_cooc_to_canonical(c, canonical_labels, canonical_groups) for c in coocs]
+    n = length(canonical_labels)
     acc = zeros(Float64, n, n)
-    for c in coocs
+    for c in aligned
         total = sum(c.matrix)
         if total > 0
             acc .+= c.matrix ./ total
         end
     end
-    acc ./= length(coocs)
-    NormalizedCoOccurrenceMatrix(acc, copy(labels), copy(groups); check_sum=true)
+    acc ./= length(aligned)
+    NormalizedCoOccurrenceMatrix(acc, copy(canonical_labels), copy(canonical_groups); check_sum=true)
 end
