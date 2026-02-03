@@ -9,8 +9,8 @@ using GeometryBasics: Point2f, Polygon
 #==============================================================================#
 
 """
-    chordplot(cooc::CoOccurrenceMatrix)
-    chordplot!(ax, cooc::CoOccurrenceMatrix)
+    chordplot(cooc::AbstractChordData)
+    chordplot!(ax, cooc::AbstractChordData)
 
 Create a chord diagram from co-occurrence data.
 
@@ -32,9 +32,15 @@ Create a chord diagram from co-occurrence data.
 - `colorscheme = :group`: Color scheme (:group, :categorical, or AbstractColorScheme)
 - `arc_strokewidth = 0.5`: Arc border width
 - `arc_strokecolor = :black`: Arc border color
-- `arc_alpha = 0.9`: Transparency for arcs (slight transparency for modern look)
-- `sort_by = :group`: How to sort arcs (:group, :value, :none)
+- `arc_alpha = 0.65`: Transparency for arcs (matches ribbon_alpha by default for consistent look)
+- `label_alpha = 0.65`: Transparency for labels (matches ribbon_alpha by default)
+- `sort_by = :group`: How to sort arcs (:group, :value, :none, or :custom with label_order)
+- `label_order = nothing`: Fixed order of labels on circle (vector of label indices 1:n, or vector of label names). Use to compare two chord plots with same layout.
 - `min_ribbon_value = 0`: Hide ribbons below this value
+- `focus_group = nothing`: If set (e.g. :V_call), only this group uses focus/dim styling
+- `focus_labels = nothing`: Labels in focus_group to keep colored; others in that group are greyed out
+- `dim_color = RGB(0.55, 0.55, 0.55)`: Color for non-focused labels in focus_group
+- `dim_alpha = 0.25`: Alpha for non-focused labels, their arcs, and ribbons touching them
 
 # Example
 ```julia
@@ -78,15 +84,64 @@ fig, ax, plt = chordplot(cooc)
         # Colors
         colorscheme = :group,
         
-        # Arc styling
+        # Arc styling (alpha matches ribbon by default for consistent transparency)
         arc_strokewidth = 0.5,
         arc_strokecolor = :black,
-        arc_alpha = 0.9,  # Slight transparency for modern look
+        arc_alpha = 0.65,
+        label_alpha = 0.65,
+        
+        # Fixed order for comparing plots
+        label_order = nothing,
+        
+        # Focus: emphasize only certain labels in a group; grey out the rest
+        focus_group = nothing,
+        focus_labels = nothing,
+        dim_color = RGB(0.55, 0.55, 0.55),
+        dim_alpha = 0.25,
     )
 end
 
 # Type alias for convenience
-const ChordPlotType = ChordPlot{<:Tuple{CoOccurrenceMatrix}}
+const ChordPlotType = ChordPlot{<:Tuple{AbstractChordData}}
+
+#==============================================================================#
+# Helpers for order and focus
+#==============================================================================#
+
+function _resolve_label_order(cooc::AbstractChordData, order)
+    order === nothing && return nothing
+    isempty(order) && return nothing
+    n = nlabels(cooc)
+    if order isa AbstractVector{<:Integer}
+        lo = collect(Int, order)
+        return length(lo) == n ? lo : nothing
+    elseif order isa AbstractVector{<:AbstractString}
+        length(order) != n && return nothing
+        try
+            idx = [cooc.label_to_index[l] for l in order]
+            sort(idx) == collect(1:n) || return nothing  # must be permutation
+            return idx
+        catch
+            return nothing
+        end
+    else
+        return nothing
+    end
+end
+
+function _dimmed_label_indices(cooc::AbstractChordData, focus_group, focus_labels)
+    (focus_group === nothing || focus_labels === nothing) && return Set{Int}()
+    fl_set = Set(focus_labels)
+    dimmed = Int[]
+    for g in cooc.groups
+        g.name != focus_group && continue
+        for i in g.indices
+            cooc.labels[i] in fl_set || push!(dimmed, i)
+        end
+        break
+    end
+    Set(dimmed)
+end
 
 #==============================================================================#
 # Plot Implementation
@@ -124,21 +179,36 @@ function Makie.plot!(p::ChordPlotType)
                     end
                 end
                 
-                return CoOccurrenceMatrix{T, S}(new_matrix, new_labels, new_groups)
+                if cooc isa NormalizedCoOccurrenceMatrix
+                    return NormalizedCoOccurrenceMatrix(new_matrix, new_labels, new_groups; check_sum=false)
+                else
+                    return CoOccurrenceMatrix{T, S}(new_matrix, new_labels, new_groups)
+                end
             end
         end
         cooc
     end
     
+    # Resolve label_order to indices (permutation of 1:n) for fixed circle order
+    resolved_order_obs = lift(filtered_cooc_obs, p.label_order) do cooc, order
+        _resolve_label_order(cooc, order)
+    end
+    
     # Reactive computations
-    layout_obs = lift(filtered_cooc_obs, p.inner_radius, p.outer_radius, p.gap_fraction, p.sort_by) do cooc, ir, or, gf, sb
+    layout_obs = lift(filtered_cooc_obs, p.inner_radius, p.outer_radius, p.gap_fraction, p.sort_by, resolved_order_obs) do cooc, ir, or, gf, sb, order
         config = LayoutConfig(
             inner_radius = ir,
             outer_radius = or,
             gap_fraction = gf,
-            sort_by = sb
+            sort_by = sb,
+            label_order = order
         )
         compute_layout(cooc, config)
+    end
+    
+    # Dimmed label indices: labels in focus_group not in focus_labels (grey + low alpha)
+    dimmed_indices_obs = lift(filtered_cooc_obs, p.focus_group, p.focus_labels) do cooc, fg, fl
+        _dimmed_label_indices(cooc, fg, fl)
     end
     
     # Filter ribbons by minimum value
@@ -164,13 +234,13 @@ function Makie.plot!(p::ChordPlotType)
     end
     
     # Draw ribbons first (behind arcs)
-    _draw_ribbons!(p, filtered_cooc_obs, filtered_layout_obs, colorscheme_obs)
+    _draw_ribbons!(p, filtered_cooc_obs, filtered_layout_obs, colorscheme_obs, dimmed_indices_obs)
     
     # Draw arcs
-    _draw_arcs!(p, filtered_cooc_obs, layout_obs, colorscheme_obs)
+    _draw_arcs!(p, filtered_cooc_obs, layout_obs, colorscheme_obs, dimmed_indices_obs)
     
     # Draw labels
-    _draw_labels!(p, filtered_cooc_obs, layout_obs)
+    _draw_labels!(p, filtered_cooc_obs, layout_obs, dimmed_indices_obs)
     
     p
 end
@@ -179,12 +249,13 @@ end
 # Drawing Components
 #==============================================================================#
 
-function _draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs)
+function _draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs)
     # Pre-compute all ribbon data
     ribbon_data = lift(
-        cooc_obs, layout_obs, colorscheme_obs, 
-        p.ribbon_alpha, p.ribbon_tension, p.ribbon_alpha_by_value, p.ribbon_alpha_scale
-    ) do cooc, layout, cs, alpha, tension, alpha_by_value, alpha_scale
+        cooc_obs, layout_obs, colorscheme_obs, dimmed_obs,
+        p.ribbon_alpha, p.ribbon_tension, p.ribbon_alpha_by_value, p.ribbon_alpha_scale,
+        p.dim_color, p.dim_alpha
+    ) do cooc, layout, cs, dimmed, alpha, tension, alpha_by_value, alpha_scale, dim_color, dim_alpha
         
         paths_and_colors = Tuple{Vector{Point2f}, RGBA{Float64}}[]
         
@@ -225,10 +296,16 @@ function _draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs)
             path = ribbon_path(ribbon, layout.inner_radius; 
                               tension=tension, n_bezier=40)
             
-            base_color = resolve_ribbon_color(cs, ribbon, cooc)
-            
-            # Calculate opacity based on value if enabled
-            if alpha_by_value && !isempty(layout.ribbons)
+            # Dimmed: ribbon touches a dimmed label -> grey and low alpha
+            src_dimmed = ribbon.source.label_idx in dimmed
+            tgt_dimmed = ribbon.target.label_idx in dimmed
+            if src_dimmed || tgt_dimmed
+                base_color = dim_color
+                ribbon_alpha = dim_alpha
+            else
+                base_color = resolve_ribbon_color(cs, ribbon, cooc)
+                # Calculate opacity based on value if enabled
+                if alpha_by_value && !isempty(layout.ribbons)
                 if value_range > 0
                     if alpha_scale == :log && min_val > 0
                         # Use logarithmic scaling for better distribution
@@ -247,8 +324,9 @@ function _draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs)
                     # All ribbons have same value, use max alpha
                     ribbon_alpha = max_alpha
                 end
-            else
-                ribbon_alpha = alpha
+                else
+                    ribbon_alpha = alpha
+                end
             end
             
             color = RGBA(base_color, ribbon_alpha)
@@ -272,11 +350,12 @@ function _draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs)
     poly!(p, polys_obs; color=colors_obs, strokewidth=0)
 end
 
-function _draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs)
-    # Compute arc polygons with alpha
+function _draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs)
+    # Compute arc polygons with alpha (dimmed arcs use dim_color and dim_alpha)
     arc_data = lift(
-        cooc_obs, layout_obs, colorscheme_obs, p.arc_width, p.arc_alpha
-    ) do cooc, layout, cs, arc_width, alpha
+        cooc_obs, layout_obs, colorscheme_obs, dimmed_obs,
+        p.arc_width, p.arc_alpha, p.dim_color, p.dim_alpha
+    ) do cooc, layout, cs, dimmed, arc_width, alpha, dim_color, dim_alpha
         
         polys_colors = Tuple{Vector{Point2f}, RGBA{Float64}}[]
         
@@ -285,8 +364,14 @@ function _draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs)
             outer_r = layout.outer_radius
             
             poly_points = arc_polygon(inner_r, outer_r, arc.start_angle, arc.end_angle; n_points=40)
-            color = resolve_arc_color(cs, arc, cooc)
-            color_with_alpha = RGBA(color, alpha)
+            if arc.label_idx in dimmed
+                color = dim_color
+                alpha_use = dim_alpha
+            else
+                color = resolve_arc_color(cs, arc, cooc)
+                alpha_use = alpha
+            end
+            color_with_alpha = RGBA(color, alpha_use)
             
             push!(polys_colors, (poly_points, color_with_alpha))
         end
@@ -303,14 +388,16 @@ function _draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs)
           strokecolor = p.arc_strokecolor)
 end
 
-function _draw_labels!(p::ChordPlotType, cooc_obs, layout_obs)
-    # Only draw if show_labels is true
+function _draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, dimmed_obs)
+    # Only draw if show_labels is true; apply label_alpha and dim_color for dimmed labels
     label_data = lift(
-        cooc_obs, layout_obs, p.show_labels, p.label_offset, p.rotate_labels, p.label_justify
-    ) do cooc, layout, show, offset, rotate, justify
+        cooc_obs, layout_obs, dimmed_obs,
+        p.show_labels, p.label_offset, p.rotate_labels, p.label_justify,
+        p.label_color, p.label_alpha, p.dim_color, p.dim_alpha
+    ) do cooc, layout, dimmed, show, offset, rotate, justify, label_color, label_alpha, dim_color, dim_alpha
         
         if !show
-            return (Point2f[], String[], Float64[], Symbol[], Symbol[])
+            return (Point2f[], String[], Float64[], Symbol[], Symbol[], RGBA{Float64}[])
         end
         
         positions = Point2f[]
@@ -318,6 +405,10 @@ function _draw_labels!(p::ChordPlotType, cooc_obs, layout_obs)
         rotations = Float64[]
         haligns = Symbol[]
         valigns = Symbol[]
+        colors = RGBA{Float64}[]
+        
+        base_color = RGBA(Makie.to_color(label_color), label_alpha)
+        dimmed_color = RGBA(dim_color, dim_alpha)
         
         for arc in layout.arcs
             lp = label_position(arc, layout.outer_radius, offset; rotate=rotate, justify=justify)
@@ -326,23 +417,24 @@ function _draw_labels!(p::ChordPlotType, cooc_obs, layout_obs)
             push!(rotations, lp.angle)
             push!(haligns, lp.halign)
             push!(valigns, lp.valign)
+            push!(colors, arc.label_idx in dimmed ? dimmed_color : base_color)
         end
         
-        (positions, texts, rotations, haligns, valigns)
+        (positions, texts, rotations, haligns, valigns, colors)
     end
     
-    # Draw labels with proper alignment
+    # Draw labels with proper alignment and per-label color/alpha
     positions_obs = lift(d -> d[1], label_data)
     texts_obs = lift(d -> d[2], label_data)
     rotations_obs = lift(d -> d[3], label_data)
+    colors_obs = lift(d -> d[6], label_data)
     
-    # Use text! with position broadcasting
     text!(p, positions_obs;
           text = texts_obs,
           rotation = rotations_obs,
           fontsize = p.label_fontsize,
-          color = p.label_color,
-          align = (:center, :center))  # Will be overridden per-label ideally
+          color = colors_obs,
+          align = (:center, :center))
 end
 
 #==============================================================================#

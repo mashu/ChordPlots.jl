@@ -28,12 +28,15 @@ fig
 ```
 
 # Main Types
-- [`CoOccurrenceMatrix`](@ref): Stores co-occurrence data with group information
+- [`AbstractChordData`](@ref): Abstract supertype for chord data
+- [`CoOccurrenceMatrix`](@ref): Raw co-occurrence counts
+- [`NormalizedCoOccurrenceMatrix`](@ref): Frequencies or combined (e.g. mean normalized) data
 - [`ChordLayout`](@ref): Computed layout for rendering
 - [`GroupColorScheme`](@ref), [`CategoricalColorScheme`](@ref): Color schemes
 
 # Main Functions
 - [`cooccurrence_matrix`](@ref): Create co-occurrence matrix from DataFrame
+- [`normalize`](@ref), [`mean_normalized`](@ref): Normalize or combine multiple matrices
 - [`chordplot`](@ref), [`chordplot!`](@ref): Create chord diagram
 - [`compute_layout`](@ref): Compute layout manually
 - [`setup_chord_axis!`](@ref): Configure axis for chord display
@@ -58,7 +61,7 @@ include("recipe.jl")
 
 # Export types
 export AbstractChordData, AbstractLayout, AbstractGeometry
-export CoOccurrenceMatrix, GroupInfo
+export CoOccurrenceMatrix, NormalizedCoOccurrenceMatrix, GroupInfo
 export ArcSegment, RibbonEndpoint, Ribbon, RibbonPath
 export ChordLayout, ChordStyle
 export LayoutConfig
@@ -72,10 +75,11 @@ export resolve_arc_color, resolve_ribbon_color
 # Export data functions
 export cooccurrence_matrix
 export nlabels, ngroups, total_flow, get_group
-export filter_by_threshold, filter_top_n, normalize
+export filter_by_threshold, filter_top_n, normalize, mean_normalized
 
 # Export layout functions
 export compute_layout, filter_ribbons, filter_ribbons_top_n
+export label_order
 export narcs, nribbons
 
 # Export geometry functions

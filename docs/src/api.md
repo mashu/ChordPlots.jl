@@ -11,13 +11,21 @@ setup_chord_axis!
 compute_layout
 ```
 
+## Data Types
+
+```@docs
+AbstractChordData
+CoOccurrenceMatrix
+NormalizedCoOccurrenceMatrix
+```
+
 ## Data Management
 
 ```@docs
 filter_top_n
 filter_by_threshold
 normalize
-CoOccurrenceMatrix
+mean_normalized
 ```
 
 ## Layout Functions

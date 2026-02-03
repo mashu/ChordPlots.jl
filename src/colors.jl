@@ -137,7 +137,7 @@ end
 #==============================================================================#
 
 """
-    group_colors(cooc::CoOccurrenceMatrix; palette=:default)
+    group_colors(cooc::AbstractChordData; palette=:default)
 
 Create a color scheme based on groups using Makie's default categorical palette
 (same as AlgebraOfGraphics uses - Wong colors, colorblind-friendly).
@@ -145,7 +145,7 @@ Create a color scheme based on groups using Makie's default categorical palette
 # Arguments
 - `palette::Symbol`: Color palette style (`:default` for Makie/AoG palette, `:modern` for custom)
 """
-function group_colors(cooc::CoOccurrenceMatrix; palette::Symbol = :default)
+function group_colors(cooc::AbstractChordData; palette::Symbol = :default)
     n_groups = ngroups(cooc)
     
     if palette == :default
@@ -224,14 +224,14 @@ end
 #==============================================================================#
 
 """
-    resolve_arc_color(scheme::AbstractColorScheme, arc::ArcSegment, cooc::CoOccurrenceMatrix)
+    resolve_arc_color(scheme::AbstractColorScheme, arc::ArcSegment, cooc::AbstractChordData)
 
 Get the color for an arc based on the color scheme.
 """
 function resolve_arc_color(
     scheme::GroupColorScheme,
     arc::ArcSegment,
-    cooc::CoOccurrenceMatrix
+    cooc::AbstractChordData
 )
     group = get_group(cooc, arc.label_idx)
     get(scheme.group_colors, group, scheme.default_color)
@@ -240,21 +240,21 @@ end
 function resolve_arc_color(
     scheme::CategoricalColorScheme,
     arc::ArcSegment,
-    cooc::CoOccurrenceMatrix
+    cooc::AbstractChordData
 )
     idx = mod1(arc.label_idx, length(scheme.colors))
     scheme.colors[idx]
 end
 
 """
-    resolve_ribbon_color(scheme::AbstractColorScheme, ribbon::Ribbon, cooc::CoOccurrenceMatrix; blend=true)
+    resolve_ribbon_color(scheme::AbstractColorScheme, ribbon::Ribbon, cooc::AbstractChordData; blend=true)
 
 Get the color for a ribbon. By default blends source and target colors.
 """
 function resolve_ribbon_color(
     scheme::GroupColorScheme,
     ribbon::Ribbon,
-    cooc::CoOccurrenceMatrix;
+    cooc::AbstractChordData;
     blend::Bool = true
 )
     src_group = get_group(cooc, ribbon.source.label_idx)
@@ -273,7 +273,7 @@ end
 function resolve_ribbon_color(
     scheme::CategoricalColorScheme,
     ribbon::Ribbon,
-    cooc::CoOccurrenceMatrix;
+    cooc::AbstractChordData;
     blend::Bool = true
 )
     src_idx = mod1(ribbon.source.label_idx, length(scheme.colors))

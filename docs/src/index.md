@@ -10,6 +10,8 @@
 
 ChordPlots.jl is a Julia package for creating chord diagrams using the Makie plotting ecosystem. Chord diagrams visualize relationships between categorical variables, showing how different categories co-occur with each other.
 
+Chord plots accept two kinds of input data: **co-occurrence counts** (`CoOccurrenceMatrix`, e.g. from `cooccurrence_matrix(df, cols)`) or **normalized/frequency data** (`NormalizedCoOccurrenceMatrix`), e.g. when combining multiple donors by normalizing each matrix by its own total sum and taking the element-wise mean (`mean_normalized`). Both types work with `chordplot` and the rest of the API.
+
 ## Features
 
 - **Simple API** - Create chord diagrams from DataFrames

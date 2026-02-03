@@ -4,8 +4,11 @@
 """
     AbstractChordData
 
-Abstract supertype for all chord data representations.
-Enables multiple dispatch for different data sources.
+Abstract supertype for chord data (co-occurrence or normalized/frequency).
+
+All subtypes must have fields: `matrix`, `labels`, `groups`, `label_to_index`.
+Use [`CoOccurrenceMatrix`](@ref) for raw counts; use [`NormalizedCoOccurrenceMatrix`](@ref)
+for frequencies or combined data (e.g. mean of normalized matrices from multiple sources).
 """
 abstract type AbstractChordData end
 
@@ -56,7 +59,7 @@ Stores co-occurrence counts between labels with group information.
 - `S`: String type for labels
 
 # Fields
-- `matrix::Matrix{T}`: Symmetric co-occurrence matrix
+- `matrix::Matrix{T}`: Symmetric co-occurrence matrix (counts, frequencies, or e.g. mean normalized counts)
 - `labels::Vector{S}`: Combined list of all labels
 - `groups::Vector{GroupInfo{S}}`: Group information
 - `label_to_index::Dict{S, Int}`: Fast label lookup
@@ -97,33 +100,78 @@ function CoOccurrenceMatrix(
     CoOccurrenceMatrix{T, S}(matrix, labels, groups)
 end
 
-# Accessors
-Base.size(c::CoOccurrenceMatrix) = size(c.matrix)
-Base.length(c::CoOccurrenceMatrix) = length(c.labels)
-nlabels(c::CoOccurrenceMatrix) = length(c.labels)
-ngroups(c::CoOccurrenceMatrix) = length(c.groups)
+#------------------------------------------------------------------------------
+# NormalizedCoOccurrenceMatrix: frequencies or mean of normalized matrices
+#------------------------------------------------------------------------------
 
-# Indexing by label names
-function Base.getindex(c::CoOccurrenceMatrix{T, S}, label1::S, label2::S) where {T, S}
+"""
+    NormalizedCoOccurrenceMatrix{T<:Real, S<:AbstractString} <: AbstractChordData
+
+Co-occurrence data in frequency form (matrix typically sums to 1) or combined
+from multiple sources (e.g. mean of per-sample normalized matrices).
+
+Same structure as [`CoOccurrenceMatrix`](@ref); the type signals that values
+are on a 0–1 scale so e.g. `min_ribbon_value` / `min_arc_flow` can use small
+thresholds. Layout and plotting use the same logic (scale-invariant).
+"""
+struct NormalizedCoOccurrenceMatrix{T<:Real, S<:AbstractString} <: AbstractChordData
+    matrix::Matrix{T}
+    labels::Vector{S}
+    groups::Vector{GroupInfo{S}}
+    label_to_index::Dict{S, Int}
+    
+    function NormalizedCoOccurrenceMatrix{T, S}(
+        matrix::Matrix{T},
+        labels::Vector{S},
+        groups::Vector{GroupInfo{S}};
+        check_sum::Bool = true
+    ) where {T<:Real, S<:AbstractString}
+        n = length(labels)
+        size(matrix) == (n, n) || throw(DimensionMismatch(
+            "Matrix size $(size(matrix)) doesn't match label count $n"
+        ))
+        if check_sum
+            s = sum(matrix)
+            isfinite(s) && s > 0 && abs(s - 1) > 1e-6 && @warn "NormalizedCoOccurrenceMatrix: matrix sum is $s (expected ≈ 1)"
+        end
+        label_to_index = Dict{S, Int}(l => i for (i, l) in enumerate(labels))
+        new{T, S}(matrix, labels, groups, label_to_index)
+    end
+end
+
+function NormalizedCoOccurrenceMatrix(
+    matrix::Matrix{T},
+    labels::Vector{S},
+    groups::Vector{GroupInfo{S}};
+    check_sum::Bool = true
+) where {T<:Real, S<:AbstractString}
+    NormalizedCoOccurrenceMatrix{T, S}(matrix, labels, groups; check_sum)
+end
+
+#------------------------------------------------------------------------------
+# Shared accessors for AbstractChordData (CoOccurrenceMatrix + NormalizedCoOccurrenceMatrix)
+#------------------------------------------------------------------------------
+
+Base.size(c::AbstractChordData) = size(c.matrix)
+Base.length(c::AbstractChordData) = length(c.labels)
+nlabels(c::AbstractChordData) = length(c.labels)
+ngroups(c::AbstractChordData) = length(c.groups)
+
+function Base.getindex(c::AbstractChordData, label1::AbstractString, label2::AbstractString)
     i = c.label_to_index[label1]
     j = c.label_to_index[label2]
     c.matrix[i, j]
 end
+Base.getindex(c::AbstractChordData, i::Int, j::Int) = c.matrix[i, j]
 
-# Indexing by integers
-Base.getindex(c::CoOccurrenceMatrix, i::Int, j::Int) = c.matrix[i, j]
-
-# Get total flow for a label (sum of all connections)
-function total_flow(c::CoOccurrenceMatrix, label_idx::Int)
+function total_flow(c::AbstractChordData, label_idx::Int)
     sum(@view c.matrix[label_idx, :])
 end
-
-function total_flow(c::CoOccurrenceMatrix{T, S}, label::S) where {T, S}
+function total_flow(c::AbstractChordData, label::AbstractString)
     total_flow(c, c.label_to_index[label])
 end
 
-# Get group for a label
-function get_group(c::CoOccurrenceMatrix, label_idx::Int)::Symbol
+function get_group(c::AbstractChordData, label_idx::Int)::Symbol
     for g in c.groups
         if label_idx in g.indices
             return g.name

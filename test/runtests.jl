@@ -82,7 +82,20 @@ using Colors
             df = DataFrame(A=["a", "a"], B=["b", "b"])
             cooc = cooccurrence_matrix(df, [:A, :B])
             norm_cooc = normalize(cooc)
+            @test norm_cooc isa ChordPlots.NormalizedCoOccurrenceMatrix
             @test sum(norm_cooc.matrix) ≈ 1.0
+        end
+        
+        @testset "NormalizedCoOccurrenceMatrix and mean_normalized" begin
+            df = DataFrame(V=["V1", "V1", "V2"], D=["D1", "D2", "D1"], J=["J1", "J1", "J2"])
+            cooc = cooccurrence_matrix(df, [:V, :D, :J])
+            # Mean of same normalized matrix twice = same as normalize once
+            mean_norm = mean_normalized([cooc, cooc])
+            @test mean_norm isa ChordPlots.NormalizedCoOccurrenceMatrix
+            @test sum(mean_norm.matrix) ≈ 1.0
+            @test mean_norm.matrix ≈ normalize(cooc).matrix
+            layout = compute_layout(mean_norm)
+            @test narcs(layout) == nlabels(mean_norm)
         end
     end
     
@@ -121,6 +134,28 @@ using Colors
             # Filter should reduce ribbons (or keep same if all above threshold)
             filtered = filter_ribbons(layout, 1.0)
             @test nribbons(filtered) <= n_original
+        end
+        
+        @testset "Fixed label order" begin
+            # Same data, fixed order of label indices -> reproducible layout for comparison
+            order = [3, 1, 2, 4, 5, 6]  # permutation of 1:6
+            config = LayoutConfig(label_order = order)
+            layout = compute_layout(cooc, config)
+            @test narcs(layout) == 6
+            # First arc along the circle (smallest start_angle) should be for label 3
+            first_label = argmin([a.start_angle for a in layout.arcs])
+            @test first_label == 3
+        end
+        
+        @testset "label_order() fetches order for reuse" begin
+            # Get order as label names from one cooc, apply to another for comparable plots
+            names_in_order = label_order(cooc)
+            @test length(names_in_order) == nlabels(cooc)
+            @test Set(names_in_order) == Set(cooc.labels)
+            # Using that order in chordplot should be valid (same set)
+            config = LayoutConfig(label_order = [cooc.label_to_index[l] for l in names_in_order])
+            layout = compute_layout(cooc, config)
+            @test narcs(layout) == 6
         end
     end
     

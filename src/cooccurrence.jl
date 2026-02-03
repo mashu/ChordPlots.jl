@@ -20,10 +20,16 @@ columns that appear in the same row are considered co-occurring.
 - `columns::Vector{Symbol}`: Column names to analyze
 
 # Keywords
-- `normalize::Bool=false`: If true, normalize counts to frequencies
+- `normalize::Bool=false`: If true, normalize counts so matrix sums to 1 (frequencies)
 
 # Returns
-- `CoOccurrenceMatrix`: Matrix of co-occurrence counts/frequencies
+- `CoOccurrenceMatrix`: Matrix of co-occurrence counts or frequencies
+
+# Note on normalized / combined data
+The matrix can hold raw counts or proportions. To combine multiple donors/samples,
+normalize each by its own total sum then take the element-wise mean — use
+[`mean_normalized`](@ref). Layout uses only relative magnitudes; set
+`min_ribbon_value` and `min_arc_flow` to match your scale (e.g. small for proportions).
 
 # Example
 ```julia
@@ -149,29 +155,38 @@ end
 #==============================================================================#
 
 """
-    filter_by_threshold(cooc::CoOccurrenceMatrix{T, S}, min_value::T) where {T, S}
+    filter_by_threshold(cooc::AbstractChordData, min_value)
 
-Create a new CoOccurrenceMatrix with values below threshold set to zero.
+Create a new matrix with values below threshold set to zero. Returns the same type as `cooc`.
 """
 function filter_by_threshold(cooc::CoOccurrenceMatrix{T, S}, min_value::T) where {T, S}
     filtered = copy(cooc.matrix)
     filtered[filtered .< min_value] .= zero(T)
     CoOccurrenceMatrix(filtered, copy(cooc.labels), copy(cooc.groups))
 end
+function filter_by_threshold(cooc::NormalizedCoOccurrenceMatrix{T, S}, min_value::T) where {T, S}
+    filtered = copy(cooc.matrix)
+    filtered[filtered .< min_value] .= zero(T)
+    NormalizedCoOccurrenceMatrix(filtered, copy(cooc.labels), copy(cooc.groups); check_sum=false)
+end
 
 """
-    filter_top_n(cooc::CoOccurrenceMatrix, n::Int)
+    filter_top_n(cooc::AbstractChordData, n::Int)
 
-Keep only the top n labels by total flow.
+Keep only the top n labels by total flow. Returns the same type as `cooc`.
 """
 function filter_top_n(cooc::CoOccurrenceMatrix{T, S}, n::Int) where {T, S}
+    _filter_top_n(cooc, n, CoOccurrenceMatrix)
+end
+function filter_top_n(cooc::NormalizedCoOccurrenceMatrix{T, S}, n::Int) where {T, S}
+    _filter_top_n(cooc, n, NormalizedCoOccurrenceMatrix)
+end
+function _filter_top_n(cooc::AbstractChordData, n::Int, out_type::Type{<:AbstractChordData})
+    S = eltype(cooc.labels)
     flows = [total_flow(cooc, i) for i in 1:nlabels(cooc)]
     top_indices = partialsortperm(flows, 1:min(n, length(flows)), rev=true)
-    
     new_matrix = cooc.matrix[top_indices, top_indices]
     new_labels = cooc.labels[top_indices]
-    
-    # Rebuild groups with only remaining labels
     new_groups = GroupInfo{S}[]
     idx = 1
     for g in cooc.groups
@@ -183,21 +198,64 @@ function filter_top_n(cooc::CoOccurrenceMatrix{T, S}, n::Int) where {T, S}
             idx += n_remaining
         end
     end
-    
-    CoOccurrenceMatrix(new_matrix, new_labels, new_groups)
+    if out_type == NormalizedCoOccurrenceMatrix
+        NormalizedCoOccurrenceMatrix(new_matrix, new_labels, new_groups; check_sum=false)
+    else
+        CoOccurrenceMatrix(new_matrix, new_labels, new_groups)
+    end
 end
 
 """
-    normalize(cooc::CoOccurrenceMatrix{T, S}) where {T, S}
+    normalize(cooc::CoOccurrenceMatrix) -> NormalizedCoOccurrenceMatrix
 
-Return a normalized version where all values sum to 1.
+Return a normalized version where all values sum to 1. Use for comparing
+matrices from different sample sizes or before combining multiple sources.
 """
 function normalize(cooc::CoOccurrenceMatrix{T, S}) where {T, S}
     total = sum(cooc.matrix)
     if total > 0
         normalized = cooc.matrix ./ total
-        CoOccurrenceMatrix(normalized, copy(cooc.labels), copy(cooc.groups))
+        NormalizedCoOccurrenceMatrix(normalized, copy(cooc.labels), copy(cooc.groups); check_sum=true)
     else
-        cooc
+        # Return normalized type with zeros (avoid returning unnormalized type)
+        NormalizedCoOccurrenceMatrix(copy(cooc.matrix), copy(cooc.labels), copy(cooc.groups); check_sum=false)
     end
+end
+
+"""
+    normalize(cooc::NormalizedCoOccurrenceMatrix)
+
+Return copy unchanged (already normalized).
+"""
+normalize(cooc::NormalizedCoOccurrenceMatrix) = NormalizedCoOccurrenceMatrix(
+    copy(cooc.matrix), copy(cooc.labels), copy(cooc.groups); check_sum=false
+)
+
+"""
+    mean_normalized(coocs::AbstractVector{<:AbstractChordData}) -> NormalizedCoOccurrenceMatrix
+
+Combine multiple co-occurrence matrices (e.g. one per donor/sample) by normalizing
+each matrix by its **own total sum** (so each sums to 1), then taking the
+element-wise mean of these normalized matrices. All inputs must have the same
+labels and groups (in the same order). The result sums to 1.
+"""
+function mean_normalized(coocs::AbstractVector{<:AbstractChordData})
+    isempty(coocs) && throw(ArgumentError("mean_normalized requires at least one matrix"))
+    first_cooc = coocs[1]
+    labels = first_cooc.labels
+    groups = first_cooc.groups
+    n = length(labels)
+    for c in coocs
+        c.labels == labels || throw(ArgumentError("mean_normalized: all matrices must have the same labels in the same order"))
+        size(c.matrix) == (n, n) || throw(DimensionMismatch("mean_normalized: all matrices must be $n×$n"))
+    end
+    acc = zeros(Float64, n, n)
+    for c in coocs
+        total = sum(c.matrix)
+        if total > 0
+            acc .+= c.matrix ./ total
+        end
+    end
+    acc ./= length(coocs)
+    NormalizedCoOccurrenceMatrix(acc, copy(labels), copy(groups); check_sum=true)
 end

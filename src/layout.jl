@@ -16,7 +16,8 @@ Configuration for layout computation.
 - `gap_fraction::T`: Fraction of circle to use for gaps between arcs
 - `start_angle::T`: Starting angle (0 = right, π/2 = top)
 - `direction::Int`: 1 for counterclockwise, -1 for clockwise
-- `sort_by::Symbol`: How to sort arcs (:group, :value, :none)
+- `sort_by::Symbol`: How to sort arcs (:group, :value, :none, :custom)
+- `label_order::Union{Nothing, Vector{Int}}`: If set (and sort_by = :custom), fixed order of label indices on the circle for reproducible/comparable plots
 """
 struct LayoutConfig{T<:Real}
     inner_radius::T
@@ -25,6 +26,7 @@ struct LayoutConfig{T<:Real}
     start_angle::T
     direction::Int
     sort_by::Symbol
+    label_order::Union{Nothing, Vector{Int}}
 end
 
 # Default constructor with Float64 type
@@ -34,7 +36,8 @@ function LayoutConfig(;
     gap_fraction::Real = 0.05,
     start_angle::Real = π/2,
     direction::Int = 1,
-    sort_by::Symbol = :group
+    sort_by::Symbol = :group,
+    label_order::Union{Nothing, Vector{Int}} = nothing
 )
     LayoutConfig{Float64}(
         Float64(inner_radius),
@@ -42,12 +45,13 @@ function LayoutConfig(;
         Float64(gap_fraction),
         Float64(start_angle),
         direction,
-        sort_by
+        sort_by,
+        label_order
     )
 end
 
 """
-    compute_layout(cooc::CoOccurrenceMatrix{T, S}, config::LayoutConfig=LayoutConfig()) where {T, S}
+    compute_layout(cooc::AbstractChordData, config::LayoutConfig=LayoutConfig())
 
 Compute the complete layout for a chord diagram.
 
@@ -58,10 +62,9 @@ Compute the complete layout for a chord diagram.
 4. Generate ribbon endpoints based on co-occurrence values
 """
 function compute_layout(
-    cooc::CoOccurrenceMatrix{T, S},
+    cooc::AbstractChordData,
     config::LayoutConfig = LayoutConfig()
-) where {T, S}
-    
+)
     n = nlabels(cooc)
     
     # Calculate total flow per label
@@ -78,8 +81,8 @@ function compute_layout(
     gap_size = total_gap / n_gaps
     content_angle = 2π - total_gap
     
-    # Sort indices based on configuration
-    order = _get_sort_order(cooc, flows, config.sort_by)
+    # Sort indices based on configuration (label_order overrides sort_by when provided)
+    order = _get_sort_order(cooc, flows, config.sort_by, config.label_order)
     
     # Compute arc positions
     arcs = Vector{ArcSegment{Float64}}(undef, n)
@@ -123,11 +126,22 @@ end
 Determine the order in which to place arcs.
 """
 function _get_sort_order(
-    cooc::CoOccurrenceMatrix,
+    cooc::AbstractChordData,
     flows::Vector{<:Real},
-    sort_by::Symbol
+    sort_by::Symbol,
+    label_order::Union{Nothing, Vector{Int}} = nothing
 )::Vector{Int}
     n = nlabels(cooc)
+    
+    if label_order !== nothing
+        length(label_order) == n || throw(ArgumentError(
+            "label_order length ($(length(label_order))) must equal number of labels ($n)"
+        ))
+        sort(label_order) == collect(1:n) || throw(ArgumentError(
+            "label_order must be a permutation of indices 1:$n"
+        ))
+        return label_order
+    end
     
     if sort_by == :none
         return collect(1:n)
@@ -143,7 +157,7 @@ function _get_sort_order(
         end
         return order
     else
-        error("Unknown sort_by option: $sort_by")
+        error("Unknown sort_by option: $sort_by (use :group, :value, :none, or provide label_order)")
     end
 end
 
@@ -156,11 +170,10 @@ The ribbon width on each end is proportional to the co-occurrence value relative
 to that label's total flow.
 """
 function _compute_ribbons(
-    cooc::CoOccurrenceMatrix{T, S},
+    cooc::AbstractChordData,
     arcs::Vector{ArcSegment{Float64}},
     arc_positions::Vector{Float64}
-)::Vector{Ribbon{Float64}} where {T, S}
-    
+)::Vector{Ribbon{Float64}}
     n = nlabels(cooc)
     ribbons = Ribbon{Float64}[]
     
@@ -207,6 +220,44 @@ end
 #==============================================================================#
 # Layout Utilities
 #==============================================================================#
+
+"""
+    label_order(cooc::AbstractChordData; sort_by=:group, label_order=nothing)
+
+Return the label names in the order they appear around the circle for the given
+co-occurrence matrix and layout options. Use this to reuse the same order when
+creating a second chord plot for comparison.
+
+# Arguments
+- `cooc`: Co-occurrence matrix (from the plot whose order you want to copy).
+- `sort_by`: Same as in `chordplot` (`:group`, `:value`, or `:none`). Must match the plot you are copying from.
+- `label_order`: If the first plot used a custom order, pass the same here (vector of indices or label names).
+
+# Returns
+- Vector of label names in circle order (same element type as `cooc.labels`).
+
+# Example
+```julia
+# First plot (default sort_by=:group)
+fig1, ax1, plt1 = chordplot(cooc_A)
+setup_chord_axis!(ax1)
+
+# Get order from cooc_A and apply to cooc_B for comparable layout
+order = label_order(cooc_A)
+fig2, ax2, plt2 = chordplot(cooc_B; label_order = order)
+setup_chord_axis!(ax2)
+```
+"""
+function label_order(
+    cooc::AbstractChordData;
+    sort_by::Symbol = :group,
+    label_order::Union{Nothing, Vector{Int}} = nothing
+)
+    n = nlabels(cooc)
+    flows = [total_flow(cooc, i) for i in 1:n]
+    order = _get_sort_order(cooc, flows, sort_by, label_order)
+    cooc.labels[order]
+end
 
 """
     filter_ribbons(layout::ChordLayout, min_value::Real)
