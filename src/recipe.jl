@@ -33,8 +33,9 @@ Create a chord diagram from co-occurrence data.
 
 ## Ribbon appearance
 - `ribbon_alpha = 0.65`: Transparency for ribbons
-- `alpha_by_value = false`: When true, scale opacity by **strength** for **ribbons, arcs, and labels**: ribbons by co-occurrence value, arcs and labels by total flow of that label. Weaker connections/labels become dimmer; one switch for consistent styling.
-- `ribbon_alpha_scale = :linear`: Scaling for strength-based opacity (`:linear` or `:log`), used for ribbons (by value) and arcs/labels (by flow) when `alpha_by_value` is true
+- `alpha_by_value = false`: When true, scale opacity by **strength** for the components enabled in `alpha_by_value_components`: ribbons by co-occurrence value, arcs and labels by total flow of that label.
+- `alpha_by_value_components = (true, true, true)`: Which parts get strength-based opacity when `alpha_by_value` is true: **(ribbons, arcs, labels)**. Use e.g. `[true, false, false]` to scale only ribbons, or `[false, false, true]` only labels. Tuple or vector of 3 `Bool`s.
+- `ribbon_alpha_scale = :linear`: Scaling for strength-based opacity (`:linear` or `:log`), used for whichever components are enabled in `alpha_by_value_components`
 - `ribbon_tension = 0.5`: Bezier curve tension (0 = straight, 1 = tight)
 
 ## Arc appearance
@@ -98,9 +99,10 @@ fig, ax, plt = chordplot(cooc)
         # Ribbon thickness and visibility
         ribbon_width_power = 1.0,
         min_ribbon_value = 0,
-        # Ribbon appearance (alpha_by_value = true applies strength-based opacity to ribbons, arcs, labels)
+        # Ribbon appearance (alpha_by_value + alpha_by_value_components control strength-based opacity)
         ribbon_alpha = 0.65,
         alpha_by_value = false,
+        alpha_by_value_components = (true, true, true),  # (ribbons, arcs, labels)
         ribbon_alpha_scale = :linear,
         ribbon_tension = 0.5,
         # Arc appearance
@@ -282,16 +284,17 @@ function draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, 
     # Pre-compute all ribbon data
     ribbon_data = lift(
         cooc_obs, layout_obs, colorscheme_obs, dimmed_obs,
-        p.ribbon_alpha, p.alpha, p.ribbon_tension, p.alpha_by_value, p.ribbon_alpha_scale,
+        p.ribbon_alpha, p.alpha, p.ribbon_tension, p.alpha_by_value, p.alpha_by_value_components, p.ribbon_alpha_scale,
         p.dim_color, p.dim_alpha
-    ) do cooc, layout, cs, dimmed, ribbon_alpha, global_alpha, tension, alpha_by_value, alpha_scale, dim_color, dim_alpha
+    ) do cooc, layout, cs, dimmed, ribbon_alpha, global_alpha, tension, alpha_by_value, components, alpha_scale, dim_color, dim_alpha
         
         paths_and_colors = Tuple{Vector{Point2f}, RGBA{Float64}}[]
         
         min_alpha = 0.1
         max_alpha = ribbon_alpha * global_alpha
         alpha_range = max_alpha - min_alpha
-        use_value_alpha = alpha_by_value && !isempty(layout.ribbons)
+        scale_ribbons = length(components) >= 1 && components[1]
+        use_value_alpha = alpha_by_value && scale_ribbons && !isempty(layout.ribbons)
         if use_value_alpha
             ribbon_values = [r.value for r in layout.ribbons]
             min_val = minimum(ribbon_values)
@@ -375,16 +378,17 @@ function draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dim
     # Compute arc polygons with alpha (dimmed arcs use dim_color and dim_alpha; alpha_by_value scales by total flow)
     arc_data = lift(
         cooc_obs, layout_obs, colorscheme_obs, dimmed_obs,
-        p.arc_width, p.arc_alpha, p.alpha, p.alpha_by_value, p.ribbon_alpha_scale, p.dim_color, p.dim_alpha
-    ) do cooc, layout, cs, dimmed, arc_width, arc_alpha, global_alpha, alpha_by_value, alpha_scale, dim_color, dim_alpha
+        p.arc_width, p.arc_alpha, p.alpha, p.alpha_by_value, p.alpha_by_value_components, p.ribbon_alpha_scale, p.dim_color, p.dim_alpha
+    ) do cooc, layout, cs, dimmed, arc_width, arc_alpha, global_alpha, alpha_by_value, components, alpha_scale, dim_color, dim_alpha
         
         polys_colors = Tuple{Vector{Point2f}, RGBA{Float64}}[]
         min_alpha = 0.1
+        scale_arcs = length(components) >= 2 && components[2]
         flows = [arc.value for arc in layout.arcs]
         flow_min = isempty(flows) ? 0.0 : minimum(flows)
         flow_max = isempty(flows) ? 1.0 : maximum(flows)
         flow_range = flow_max - flow_min
-        if alpha_by_value && flow_range > 0 && flow_min > 0 && alpha_scale == :log
+        if alpha_by_value && scale_arcs && flow_range > 0 && flow_min > 0 && alpha_scale == :log
             log_min = log(flow_min)
             log_max = log(flow_max)
             log_range = log_max - log_min
@@ -404,7 +408,7 @@ function draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dim
                 alpha_use = dim_alpha * global_alpha
             else
                 color = resolve_arc_color(cs, arc, cooc)
-                if alpha_by_value && flow_range > 0
+                if alpha_by_value && scale_arcs && flow_range > 0
                     if alpha_scale == :log && flow_min > 0
                         norm = (log(arc.value) - log_min) / log_range
                     else
@@ -438,8 +442,8 @@ function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, dimmed_obs)
     label_data = lift(
         cooc_obs, layout_obs, dimmed_obs,
         p.show_labels, p.label_offset, p.rotate_labels, p.label_justify,
-        p.label_color, p.label_alpha, p.alpha, p.alpha_by_value, p.ribbon_alpha_scale, p.dim_color, p.dim_alpha
-    ) do cooc, layout, dimmed, show, offset, rotate, justify, label_color, label_alpha, global_alpha, alpha_by_value, alpha_scale, dim_color, dim_alpha
+        p.label_color, p.label_alpha, p.alpha, p.alpha_by_value, p.alpha_by_value_components, p.ribbon_alpha_scale, p.dim_color, p.dim_alpha
+    ) do cooc, layout, dimmed, show, offset, rotate, justify, label_color, label_alpha, global_alpha, alpha_by_value, components, alpha_scale, dim_color, dim_alpha
         
         if !show
             return (Point2f[], String[], Float64[], Symbol[], Symbol[], RGBA{Float64}[])
@@ -453,11 +457,12 @@ function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, dimmed_obs)
         colors = RGBA{Float64}[]
         
         min_alpha = 0.1
+        scale_labels = length(components) >= 3 && components[3]
         flows = [arc.value for arc in layout.arcs]
         flow_min = isempty(flows) ? 0.0 : minimum(flows)
         flow_max = isempty(flows) ? 1.0 : maximum(flows)
         flow_range = flow_max - flow_min
-        if alpha_by_value && flow_range > 0 && flow_min > 0 && alpha_scale == :log
+        if alpha_by_value && scale_labels && flow_range > 0 && flow_min > 0 && alpha_scale == :log
             log_min = log(flow_min)
             log_max = log(flow_max)
             log_range = log_max - log_min
@@ -479,7 +484,7 @@ function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, dimmed_obs)
             if arc.label_idx in dimmed
                 push!(colors, dimmed_color)
             else
-                if alpha_by_value && flow_range > 0
+                if alpha_by_value && scale_labels && flow_range > 0
                     if alpha_scale == :log && flow_min > 0
                         norm = (log(arc.value) - log_min) / log_range
                     else
