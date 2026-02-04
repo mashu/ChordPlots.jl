@@ -98,6 +98,16 @@ using Colors
             @test narcs(layout) == nlabels(mean_norm)
         end
         
+        @testset "cooccurrence_values" begin
+            df = DataFrame(V=["V1", "V1", "V2"], D=["D1", "D2", "D1"], J=["J1", "J1", "J2"])
+            cooc = cooccurrence_matrix(df, [:V, :D, :J])
+            vals = ChordPlots.cooccurrence_values(cooc)
+            @test vals isa Vector{Float64}
+            @test length(vals) > 0
+            vals_multi = ChordPlots.cooccurrence_values([cooc, cooc])
+            @test length(vals_multi) == 2 * length(vals)
+        end
+        
         @testset "mean_normalized with different labels per donor" begin
             df1 = DataFrame(V=["V1", "V1"], D=["D1", "D2"], J=["J1", "J1"])
             df2 = DataFrame(V=["V2", "V2"], D=["D1", "D1"], J=["J1", "J2"])

@@ -176,12 +176,12 @@ end
 Keep only the top n labels by total flow. Returns the same type as `cooc`.
 """
 function filter_top_n(cooc::CoOccurrenceMatrix{T, S}, n::Int) where {T, S}
-    _filter_top_n(cooc, n, CoOccurrenceMatrix)
+    filter_top_n_impl(cooc, n, CoOccurrenceMatrix)
 end
 function filter_top_n(cooc::NormalizedCoOccurrenceMatrix{T, S}, n::Int) where {T, S}
-    _filter_top_n(cooc, n, NormalizedCoOccurrenceMatrix)
+    filter_top_n_impl(cooc, n, NormalizedCoOccurrenceMatrix)
 end
-function _filter_top_n(cooc::AbstractChordData, n::Int, out_type::Type{<:AbstractChordData})
+function filter_top_n_impl(cooc::AbstractChordData, n::Int, out_type::Type{<:AbstractChordData})
     S = eltype(cooc.labels)
     flows = [total_flow(cooc, i) for i in 1:nlabels(cooc)]
     top_indices = partialsortperm(flows, 1:min(n, length(flows)), rev=true)
@@ -301,4 +301,36 @@ function mean_normalized(coocs::AbstractVector{<:AbstractChordData})
     end
     acc ./= length(aligned)
     NormalizedCoOccurrenceMatrix(acc, copy(canonical_labels), copy(canonical_groups); check_sum=true)
+end
+
+#------------------------------------------------------------------------------
+# Value distribution (for threshold choice)
+#------------------------------------------------------------------------------
+
+"""
+    cooccurrence_values(cooc::AbstractChordData) -> Vector{Float64}
+
+Return the upper-triangle co-occurrence values (each pair counted once).
+Use with `histogram(cooccurrence_values(cooc))` to inspect the distribution and choose `min_ribbon_value`.
+"""
+function cooccurrence_values(cooc::AbstractChordData)
+    n = nlabels(cooc)
+    vals = Float64[]
+    for j in 2:n
+        for i in 1:(j-1)
+            v = cooc.matrix[i, j]
+            v > 0 && push!(vals, Float64(v))
+        end
+    end
+    vals
+end
+
+"""
+    cooccurrence_values(coocs::AbstractVector{<:AbstractChordData}) -> Vector{Float64}
+
+Concatenate co-occurrence values from all matrices. Use to plot the combined distribution
+when choosing a threshold across multiple donors/samples.
+"""
+function cooccurrence_values(coocs::AbstractVector{<:AbstractChordData})
+    vcat((cooccurrence_values(c) for c in coocs)...)
 end

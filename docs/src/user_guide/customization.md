@@ -12,9 +12,15 @@ chordplot!(ax, cooc;
     outer_radius = 1.0,     # Outer radius for arcs
     arc_width = 0.08,       # Width of arc segments
     gap_fraction = 0.03,    # Gap between arcs
-    sort_by = :group        # :group, :value, or :none
+    sort_by = :group,       # :group, :value, or :none
+    arc_scale = 1.0,        # Fraction of width for arcs; < 1 adds gaps between arcs
+    ribbon_width_power = 1.0 # Exponent for ribbon thickness; > 1 makes thick vs thin more dramatic
 )
 ```
+
+**Ribbon thickness** (`ribbon_width_power`): Ribbon widths are scaled as `(value/flow)^power`. With `ribbon_width_power = 1.0` (default), widths are proportional to value. Use a value greater than 1 (e.g. `1.5` or `2.0`) to make strong connections visibly thicker and weak ones thinner, so the difference between thick and thin ribbons is more dramatic.
+
+**Gaps between arcs** (`gap_fraction` and `arc_scale`): These work together and are not redundant. **`gap_fraction`** is the fraction of the full circle (2π) reserved for gaps between arcs (e.g. `0.03` → 3% gap, 97% arc content). **`arc_scale`** then scales only the arc (content) portion: with `arc_scale = 1.0` you keep that 97%; with `arc_scale < 1` (e.g. `0.7`) you use only 70% of the content for arcs and the rest becomes extra gap. So `gap_fraction` sets the baseline gap; `arc_scale < 1` adds further separation when needed.
 
 ## Ribbon Styling
 

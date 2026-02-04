@@ -2,6 +2,33 @@
 
 Filter data to reduce clutter and focus on important relationships.
 
+## Choosing a Threshold
+
+When filtering by value (e.g. `filter_by_threshold` or `min_ribbon_value`), it helps to inspect the distribution of co-occurrence values first. Use the built-in value histogram:
+
+```julia
+# Single matrix: histogram of all co-occurrence values (upper triangle, non-zero)
+value_histogram(cooc)
+
+# Or on an existing axis
+value_histogram!(ax, cooc; bins = 30)
+```
+
+For multiple matrices (e.g. several donors), pass a vector to use the combined distribution:
+
+```julia
+value_histogram([cooc1, cooc2, cooc3])
+```
+
+You can also get the raw values and plot them yourself:
+
+```julia
+vals = cooccurrence_values(cooc)
+# Use vals to pick a threshold, then:
+cooc_filtered = filter_by_threshold(cooc, 5)
+# or chordplot!(ax, cooc; min_ribbon_value = 5)
+```
+
 ## Filtering Small Segments
 
 When you have many labels with small co-occurrence values, they can cluster together and overlap:

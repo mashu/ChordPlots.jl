@@ -76,6 +76,7 @@ export resolve_arc_color, resolve_ribbon_color
 export cooccurrence_matrix
 export nlabels, ngroups, total_flow, get_group
 export filter_by_threshold, filter_top_n, normalize, mean_normalized
+export cooccurrence_values, value_histogram, value_histogram!
 
 # Export layout functions
 export compute_layout, filter_ribbons, filter_ribbons_top_n

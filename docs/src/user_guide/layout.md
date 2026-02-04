@@ -11,6 +11,8 @@ config = LayoutConfig(
     inner_radius = 0.75,    # Ribbon attachment radius
     outer_radius = 1.0,     # Arc outer radius
     gap_fraction = 0.05,    # Gap between arcs
+    arc_scale = 1.0,        # Fraction of width for arcs; < 1 adds gaps between arcs/labels
+    ribbon_width_power = 1.0, # Exponent for ribbon thickness; > 1 makes thick vs thin more dramatic
     start_angle = π/2,      # Start at top (0 = right)
     direction = 1,          # 1 = counterclockwise, -1 = clockwise
     sort_by = :group        # :group, :value, or :none
@@ -18,6 +20,10 @@ config = LayoutConfig(
 
 layout = compute_layout(cooc, config)
 ```
+
+- **`gap_fraction`**: Fraction of the full circle reserved for gaps (e.g. `0.05` → 5% gap, 95% for arcs).
+- **`arc_scale`**: Scale factor for the arc (content) portion only; the rest is gap. With `arc_scale = 1.0` the arcs use all of the non-gap space; with `arc_scale &lt; 1` (e.g. `0.7`) arcs use less and gaps grow. So it does not conflict with `gap_fraction` — it adds extra separation on top of it.
+- **`ribbon_width_power`**: Exponent for ribbon thickness: `(value/flow)^power`. Use &gt; 1 (e.g. `1.5` or `2`) to make thick ribbons thicker and thin ones thinner.
 
 **What is a custom layout?** A custom layout allows you to control how labels are arranged around the circle, how arcs are sized, and the spacing between elements. This gives you fine-grained control over the visual appearance beyond the default settings.
 

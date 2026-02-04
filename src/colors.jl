@@ -59,12 +59,12 @@ end
 #==============================================================================#
 
 """
-    _wong_palette() -> Vector{RGB{Float64}}
+    wong_palette() -> Vector{RGB{Float64}}
 
 Returns Wong's colorblind-friendly palette (same as Makie/AoG default).
 These are eye-catching but not garish, professional colors.
 """
-function _wong_palette()::Vector{RGB{Float64}}
+function wong_palette()::Vector{RGB{Float64}}
     # Wong's colorblind-friendly palette (same as Makie/AoG uses)
     # From: Wong, B. (2011). Points of view: Color blindness. Nature Methods, 8(6), 441.
     [
@@ -80,12 +80,12 @@ function _wong_palette()::Vector{RGB{Float64}}
 end
 
 """
-    _modern_palette() -> Vector{RGB{Float64}}
+    modern_palette() -> Vector{RGB{Float64}}
 
 Returns a curated modern, professional color palette.
 Colors are chosen for visual appeal, professionalism, and good contrast.
 """
-function _modern_palette()::Vector{RGB{Float64}}
+function modern_palette()::Vector{RGB{Float64}}
     # Modern, professional palette inspired by contemporary design systems
     # Colors are vibrant but not garish, professional and pleasant
     # Optimized for data visualization with good contrast and accessibility
@@ -114,12 +114,12 @@ function _modern_palette()::Vector{RGB{Float64}}
 end
 
 """
-    _get_colors_for_count(n::Int) -> Vector{RGB{Float64}}
+    get_colors_for_count(n::Int) -> Vector{RGB{Float64}}
 
 Returns n colors from the modern palette, cycling if needed.
 """
-function _get_colors_for_count(n::Int)::Vector{RGB{Float64}}
-    palette = _modern_palette()
+function get_colors_for_count(n::Int)::Vector{RGB{Float64}}
+    palette = modern_palette()
     if n <= length(palette)
         return palette[1:n]
     else
@@ -151,7 +151,7 @@ function group_colors(cooc::AbstractChordData; palette::Symbol = :default)
     if palette == :default
         # Use Wong's colorblind-friendly palette (same as Makie/AoG default)
         # This gives us eye-catching but not garish, professional colors
-        wong = _wong_palette()
+        wong = wong_palette()
         colors = wong[1:min(n_groups, length(wong))]
         # If we need more colors, cycle through the palette
         if n_groups > length(colors)
@@ -161,7 +161,7 @@ function group_colors(cooc::AbstractChordData; palette::Symbol = :default)
         end
     else
         # Fallback to modern palette
-        colors = _get_colors_for_count(n_groups)
+        colors = get_colors_for_count(n_groups)
     end
     
     group_color_dict = Dict{Symbol, RGB{Float64}}()
@@ -191,7 +191,7 @@ Create n distinguishable colors using Makie's default categorical palette
 function categorical_colors(n::Int; palette::Symbol = :default)
     if palette == :default
         # Use Wong's colorblind-friendly palette (same as Makie/AoG default)
-        wong = _wong_palette()
+        wong = wong_palette()
         colors = wong[1:min(n, length(wong))]
         # If we need more colors, cycle through the palette
         if n > length(colors)
@@ -201,7 +201,7 @@ function categorical_colors(n::Int; palette::Symbol = :default)
         end
         CategoricalColorScheme(colors)
     else
-        colors = _get_colors_for_count(n)
+        colors = get_colors_for_count(n)
         CategoricalColorScheme(colors)
     end
 end

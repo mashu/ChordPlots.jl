@@ -14,33 +14,57 @@ using GeometryBasics: Point2f, Polygon
 
 Create a chord diagram from co-occurrence data.
 
-# Attributes
+# Attributes (grouped by purpose)
+
+## Radii and arc size
 - `inner_radius = 0.92`: Inner radius for ribbons (closer to outer for less wasted space)
 - `outer_radius = 1.0`: Outer radius for arcs
-- `arc_width = 0.08`: Width of arc segments
-- `gap_fraction = 0.03`: Gap between arcs as fraction of circle
+- `arc_width = 0.08`: Width of arc segments (band thickness around the circle)
+
+## Arc and gap layout (angle allocation)
+- `gap_fraction = 0.03`: Fraction of the full circle reserved for gaps between arcs (baseline spacing)
+- `arc_scale = 1.0`: Scale for the arc (content) portion only; &lt; 1 uses less space for arcs and adds extra gap. Works with `gap_fraction`: content = (1 - gap_fraction)*arc_scale; rest is gap.
+- `sort_by = :group`: How to order arcs around the circle (`:group`, `:value`, `:none`). Ignored when `label_order` is set.
+- `label_order = nothing`: Fixed order on the circle (vector of label indices or names). When set, overrides `sort_by`.
+
+## Ribbon thickness and visibility
+- `ribbon_width_power = 1.0`: Exponent for ribbon width (value/flow)^power; &gt; 1 makes thick vs thin ribbons more dramatic
+- `min_ribbon_value = 0`: Hide ribbons below this value (use `value_histogram(cooc)` to choose a threshold)
+
+## Ribbon appearance
 - `ribbon_alpha = 0.65`: Transparency for ribbons
 - `ribbon_alpha_by_value = false`: If true, scale opacity by ribbon value (min 10%, larger ribbons more visible)
-- `ribbon_alpha_scale = :linear`: Scaling method for value-based opacity (`:linear` default, `:log` for better distribution of small integers)
-- `ribbon_tension = 0.5`: Bezier curve tension (0=straight, 1=tight)
-- `show_labels = true`: Show labels
-- `label_offset = 0.12`: Distance from arc to label (increase for longer labels to avoid overlap)
-- `label_fontsize = 10`: Label font size
-- `rotate_labels = true`: Rotate labels to follow arcs (prevents upside-down text)
-- `label_justify = :inside`: Label justification (`:inside` aligns toward circle center, `:outside` aligns away)
-- `min_arc_flow = 0`: Filter out arcs and labels with total flow below this value (helps reduce overlap from many small segments)
-- `colorscheme = :group`: Color scheme (:group, :categorical, or AbstractColorScheme)
+- `ribbon_alpha_scale = :linear`: Scaling for value-based opacity (`:linear` or `:log`)
+- `ribbon_tension = 0.5`: Bezier curve tension (0 = straight, 1 = tight)
+
+## Arc appearance
 - `arc_strokewidth = 0.5`: Arc border width
 - `arc_strokecolor = :black`: Arc border color
-- `arc_alpha = 0.65`: Transparency for arcs (matches ribbon_alpha by default for consistent look)
-- `label_alpha = 0.65`: Transparency for labels (matches ribbon_alpha by default)
-- `sort_by = :group`: How to sort arcs (:group, :value, :none, or :custom with label_order)
-- `label_order = nothing`: Fixed order of labels on circle (vector of label indices 1:n, or vector of label names). Use to compare two chord plots with same layout.
-- `min_ribbon_value = 0`: Hide ribbons below this value
-- `focus_group = nothing`: If set (e.g. :V_call), only this group uses focus/dim styling
-- `focus_labels = nothing`: Labels in focus_group to keep colored; others in that group are greyed out
-- `dim_color = RGB(0.55, 0.55, 0.55)`: Color for non-focused labels in focus_group
-- `dim_alpha = 0.25`: Alpha for non-focused labels, their arcs, and ribbons touching them
+- `arc_alpha = 0.65`: Transparency for arcs (default matches `ribbon_alpha`)
+
+## Labels
+- `show_labels = true`: Whether to show labels
+- `label_offset = 0.12`: Distance from arc to label (increase for longer labels)
+- `label_fontsize = 10`: Label font size
+- `label_color = :black`: Label color
+- `label_alpha = 0.65`: Transparency for labels (default matches `ribbon_alpha`)
+- `rotate_labels = true`: Rotate labels to follow arcs (avoids upside-down text)
+- `label_justify = :inside`: `:inside` (toward center) or `:outside` (away from center)
+- `min_arc_flow = 0`: Hide arcs (and their labels) whose total flow is below this value (reduces clutter)
+
+## Colors
+- `colorscheme = :group`: Color scheme (`:group`, `:categorical`, or an `AbstractColorScheme`)
+
+## Focus (emphasize a subset of labels in one group)
+- `focus_group = nothing`: If set (e.g. `:V_call`), only this group uses focus/dim styling
+- `focus_labels = nothing`: Labels in `focus_group` to keep colored; others in that group are dimmed
+- `dim_color = RGB(0.55, 0.55, 0.55)`: Color for dimmed labels, their arcs, and ribbons touching them
+- `dim_alpha = 0.25`: Alpha for dimmed elements
+
+# Parameter interactions
+- **Arc/gap**: `gap_fraction` reserves that fraction of the circle for gaps; `arc_scale` then scales the remaining content (arcs). So they combine; use `arc_scale` &lt; 1 for extra separation.
+- **Order**: When `label_order` is set, it overrides `sort_by`.
+- **Filtering**: `min_arc_flow` removes whole arcs (and labels); `min_ribbon_value` only hides ribbons. Both can be used.
 
 # Example
 ```julia
@@ -58,42 +82,39 @@ fig, ax, plt = chordplot(cooc)
 """
 @recipe(ChordPlot, cooc) do scene
     Attributes(
-        # Layout
-        inner_radius = 0.92,  # Closer to outer_radius to reduce wasted space
+        # Radii and arc size
+        inner_radius = 0.92,
         outer_radius = 1.0,
         arc_width = 0.08,
+        # Arc and gap layout
         gap_fraction = 0.03,
+        arc_scale = 1.0,
         sort_by = :group,
-        
-        # Ribbons
-        ribbon_alpha = 0.65,  # Slightly more opaque for better visibility
-        ribbon_tension = 0.5,
+        label_order = nothing,
+        # Ribbon thickness and visibility
+        ribbon_width_power = 1.0,
         min_ribbon_value = 0,
-        ribbon_alpha_by_value = false,  # Scale opacity by ribbon value (larger = more visible)
-        ribbon_alpha_scale = :linear,  # Scaling method: :linear (default) or :log (better for small integers)
-        
+        # Ribbon appearance
+        ribbon_alpha = 0.65,
+        ribbon_alpha_by_value = false,
+        ribbon_alpha_scale = :linear,
+        ribbon_tension = 0.5,
+        # Arc appearance
+        arc_strokewidth = 0.5,
+        arc_strokecolor = :black,
+        arc_alpha = 0.65,
         # Labels
         show_labels = true,
         label_offset = 0.12,
         label_fontsize = 10,
-        rotate_labels = true,
         label_color = :black,
-        label_justify = :inside,  # :inside (toward circle) or :outside (away from circle)
-        min_arc_flow = 0,  # Filter out arcs (and labels) with total flow below this value
-        
+        label_alpha = 0.65,
+        rotate_labels = true,
+        label_justify = :inside,
+        min_arc_flow = 0,
         # Colors
         colorscheme = :group,
-        
-        # Arc styling (alpha matches ribbon by default for consistent transparency)
-        arc_strokewidth = 0.5,
-        arc_strokecolor = :black,
-        arc_alpha = 0.65,
-        label_alpha = 0.65,
-        
-        # Fixed order for comparing plots
-        label_order = nothing,
-        
-        # Focus: emphasize only certain labels in a group; grey out the rest
+        # Focus (emphasize subset of labels in one group)
         focus_group = nothing,
         focus_labels = nothing,
         dim_color = RGB(0.55, 0.55, 0.55),
@@ -108,7 +129,7 @@ const ChordPlotType = ChordPlot{<:Tuple{AbstractChordData}}
 # Helpers for order and focus
 #==============================================================================#
 
-function _resolve_label_order(cooc::AbstractChordData, order)
+function resolve_label_order(cooc::AbstractChordData, order)
     order === nothing && return nothing
     isempty(order) && return nothing
     n = nlabels(cooc)
@@ -129,7 +150,7 @@ function _resolve_label_order(cooc::AbstractChordData, order)
     end
 end
 
-function _dimmed_label_indices(cooc::AbstractChordData, focus_group, focus_labels)
+function dimmed_label_indices(cooc::AbstractChordData, focus_group, focus_labels)
     (focus_group === nothing || focus_labels === nothing) && return Set{Int}()
     fl_set = Set(focus_labels)
     dimmed = Int[]
@@ -191,24 +212,26 @@ function Makie.plot!(p::ChordPlotType)
     
     # Resolve label_order to indices (permutation of 1:n) for fixed circle order
     resolved_order_obs = lift(filtered_cooc_obs, p.label_order) do cooc, order
-        _resolve_label_order(cooc, order)
+        resolve_label_order(cooc, order)
     end
     
     # Reactive computations
-    layout_obs = lift(filtered_cooc_obs, p.inner_radius, p.outer_radius, p.gap_fraction, p.sort_by, resolved_order_obs) do cooc, ir, or, gf, sb, order
+    layout_obs = lift(filtered_cooc_obs, p.inner_radius, p.outer_radius, p.gap_fraction, p.sort_by, resolved_order_obs, p.arc_scale, p.ribbon_width_power) do cooc, ir, or, gf, sb, order, arc_scale, ribbon_power
         config = LayoutConfig(
             inner_radius = ir,
             outer_radius = or,
             gap_fraction = gf,
             sort_by = sb,
-            label_order = order
+            label_order = order,
+            arc_scale = arc_scale,
+            ribbon_width_power = ribbon_power
         )
         compute_layout(cooc, config)
     end
     
     # Dimmed label indices: labels in focus_group not in focus_labels (grey + low alpha)
     dimmed_indices_obs = lift(filtered_cooc_obs, p.focus_group, p.focus_labels) do cooc, fg, fl
-        _dimmed_label_indices(cooc, fg, fl)
+        dimmed_label_indices(cooc, fg, fl)
     end
     
     # Filter ribbons by minimum value
@@ -234,13 +257,13 @@ function Makie.plot!(p::ChordPlotType)
     end
     
     # Draw ribbons first (behind arcs)
-    _draw_ribbons!(p, filtered_cooc_obs, filtered_layout_obs, colorscheme_obs, dimmed_indices_obs)
+    draw_ribbons!(p, filtered_cooc_obs, filtered_layout_obs, colorscheme_obs, dimmed_indices_obs)
     
     # Draw arcs
-    _draw_arcs!(p, filtered_cooc_obs, layout_obs, colorscheme_obs, dimmed_indices_obs)
+    draw_arcs!(p, filtered_cooc_obs, layout_obs, colorscheme_obs, dimmed_indices_obs)
     
     # Draw labels
-    _draw_labels!(p, filtered_cooc_obs, layout_obs, dimmed_indices_obs)
+    draw_labels!(p, filtered_cooc_obs, layout_obs, dimmed_indices_obs)
     
     p
 end
@@ -249,7 +272,7 @@ end
 # Drawing Components
 #==============================================================================#
 
-function _draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs)
+function draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs)
     # Pre-compute all ribbon data
     ribbon_data = lift(
         cooc_obs, layout_obs, colorscheme_obs, dimmed_obs,
@@ -350,7 +373,7 @@ function _draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs,
     poly!(p, polys_obs; color=colors_obs, strokewidth=0)
 end
 
-function _draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs)
+function draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs)
     # Compute arc polygons with alpha (dimmed arcs use dim_color and dim_alpha)
     arc_data = lift(
         cooc_obs, layout_obs, colorscheme_obs, dimmed_obs,
@@ -388,7 +411,7 @@ function _draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, di
           strokecolor = p.arc_strokecolor)
 end
 
-function _draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, dimmed_obs)
+function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, dimmed_obs)
     # Only draw if show_labels is true; apply label_alpha and dim_color for dimmed labels
     label_data = lift(
         cooc_obs, layout_obs, dimmed_obs,
@@ -454,6 +477,39 @@ end
 function chordplot!(ax, df::DataFrame, columns::Vector{Symbol}; kwargs...)
     cooc = cooccurrence_matrix(df, columns)
     chordplot!(ax, cooc; kwargs...)
+end
+
+#==============================================================================#
+# Value distribution histogram (for choosing min_ribbon_value)
+#==============================================================================#
+
+"""
+    value_histogram!(ax, data; kwargs...)
+
+Plot histogram of co-occurrence values on the given axis. `data` can be a single
+`AbstractChordData` or an abstract container of them (e.g. `Vector` of matrices).
+Use to inspect the distribution and choose a threshold (e.g. `min_ribbon_value`).
+Keyword arguments are passed to `histogram!`.
+"""
+function value_histogram!(ax::Axis, data; kwargs...)
+    vals = data isa AbstractChordData ? cooccurrence_values(data) : cooccurrence_values(collect(data))
+    isempty(vals) && return ax
+    histogram!(ax, vals; kwargs...)
+    ax
+end
+
+"""
+    value_histogram(data; kwargs...)
+
+Create a figure with a histogram of co-occurrence values. `data` can be a single
+`AbstractChordData` or an abstract container of them. Returns `(fig, ax, hist)`.
+Use to choose `min_ribbon_value` from the distribution.
+"""
+function value_histogram(data; kwargs...)
+    fig = Figure()
+    ax = Axis(fig[1, 1], xlabel = "Co-occurrence value", ylabel = "Count")
+    value_histogram!(ax, data; kwargs...)
+    (fig, ax)
 end
 
 #==============================================================================#

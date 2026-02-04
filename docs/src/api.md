@@ -28,6 +28,16 @@ normalize
 mean_normalized
 ```
 
+## Data Exploration
+
+Inspect the distribution of co-occurrence values to choose thresholds (e.g. `min_ribbon_value`, `filter_by_threshold`):
+
+```@docs
+cooccurrence_values
+value_histogram
+value_histogram!
+```
+
 ## Layout Functions
 
 ```@docs
