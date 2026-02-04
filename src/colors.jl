@@ -60,10 +60,15 @@ end
 Color scheme for signed values (e.g., differences) using a diverging colormap.
 Maps negative values to one color, zero to neutral, positive to another color.
 
+Both ribbons and arcs are colored by their signed values:
+- Ribbons: colored by the connection's difference value
+- Arcs: colored by net flow (sum of all differences for that label), showing 
+  overall enrichment (positive/red) vs depletion (negative/blue)
+
 # Fields
-- `negative_color::C`: Color for most negative values
-- `neutral_color::C`: Color for zero/neutral values
-- `positive_color::C`: Color for most positive values
+- `negative_color::C`: Color for negative values (depletion)
+- `neutral_color::C`: Color for zero/neutral values  
+- `positive_color::C`: Color for positive values (enrichment)
 - `range::Tuple{Float64, Float64}`: (min, max) value range for normalization
 - `symmetric::Bool`: If true, range is symmetric around zero (max absolute value)
 """
@@ -245,20 +250,26 @@ end
 
 Create a diverging color scheme for signed values (e.g., from `diff()`).
 
-Ribbons are colored by their value: negative → neutral → positive.
+Both ribbons and arcs are colored by their signed values:
+- **Ribbons**: colored by the connection's difference value
+- **Arcs**: colored by net flow (sum of all differences for that label), showing
+  overall enrichment (positive → red) vs depletion (negative → blue)
+
 Use with `diff(a, b; absolute=false)` to visualize increases vs decreases.
 
 # Arguments
 - `cooc`: The chord data (used to determine value range)
-- `negative`: Color for most negative values (default: steel blue)
-- `neutral`: Color for zero (default: white)
-- `positive`: Color for most positive values (default: firebrick red)
+- `negative`: Color for negative values/depletion (default: steel blue)
+- `neutral`: Color for zero (default: near-white)
+- `positive`: Color for positive values/enrichment (default: firebrick red)
 - `symmetric`: If true (default), range is symmetric around zero
 
 # Example
 ```julia
 d = diff(cooc_after, cooc_before; absolute=false)  # positive = increase
 fig, ax, plt = chordplot(d; colorscheme=diverging_colors(d))
+# Blue arcs = labels with overall decreased connections
+# Red arcs = labels with overall increased connections
 ```
 """
 function diverging_colors(
@@ -273,13 +284,20 @@ function diverging_colors(
     neu_c = neutral isa Symbol ? parse(Colorant, string(neutral)) : neutral
     pos_c = positive isa Symbol ? parse(Colorant, string(positive)) : positive
     
-    # Get value range from matrix
+    # Get value range from matrix (includes both ribbon values and net flows for arcs)
     n = nlabels(cooc)
     vals = Float64[]
+    
+    # Ribbon values (pairwise differences)
     for j in 2:n
         for i in 1:(j-1)
             push!(vals, Float64(cooc.matrix[i, j]))
         end
+    end
+    
+    # Net flows per label (for arc coloring)
+    for i in 1:n
+        push!(vals, Float64(total_flow(cooc, i)))
     end
     
     if isempty(vals)
@@ -400,9 +418,10 @@ function resolve_arc_color(
     arc::ArcSegment,
     cooc::AbstractChordData
 )
-    # For arcs in diverging scheme, use neutral color (arcs don't have signed meaning)
-    # Or could compute net flow - for now, neutral gray
-    scheme.neutral_color
+    # For arcs in diverging scheme, color by net flow (sum of signed values)
+    # This shows which labels are overall enriched (positive/red) vs depleted (negative/blue)
+    net_flow = total_flow(cooc, arc.label_idx)
+    diverging_color(scheme, net_flow)
 end
 
 """

@@ -39,21 +39,32 @@ ax.title = "Changes: After - Before"
 fig
 ```
 
-The colormap defaults to:
+The colormap uses the same diverging scale for both ribbons and arcs:
+
+**Ribbons** (connections):
 - **Blue**: connections that decreased (negative difference)
 - **White/neutral**: little or no change
 - **Red**: connections that increased (positive difference)
+
+**Arcs** (labels):
+- **Blue arc**: label with overall **depleted** connections (net negative change)
+- **White arc**: label with balanced changes (net ≈ zero)
+- **Red arc**: label with overall **enriched** connections (net positive change)
+
+This makes it easy to see at a glance which genes/labels gained or lost connections overall.
 
 ## Customizing Colors
 
 You can customize the diverging color scheme:
 
 ```julia
-# Custom colors: green for increase, purple for decrease
+using Colors  # for RGB
+
+# Custom colors: green for enrichment, purple for depletion
 cs = diverging_colors(d; 
-    negative = RGB(0.5, 0.0, 0.5),  # purple for decrease
+    negative = RGB(0.5, 0.0, 0.5),  # purple for depletion
     neutral = RGB(1.0, 1.0, 1.0),   # white
-    positive = RGB(0.0, 0.5, 0.0)   # green for increase
+    positive = RGB(0.0, 0.5, 0.0)   # green for enrichment
 )
 chordplot(d; colorscheme=cs)
 ```
