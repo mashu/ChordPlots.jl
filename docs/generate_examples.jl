@@ -44,11 +44,11 @@ chordplot!(ax, cooc_filtered)
 setup_chord_axis!(ax)
 save(joinpath(output_dir, "filtered.png"), fig)
 
-# Example 3: Value-based opacity
+# Example 3: Strength-based opacity (ribbons, arcs, labels)
 println("Generating opacity example...")
 fig = Figure(size=(600, 600))
-ax = Axis(fig[1,1], title="Value-based Opacity")
-chordplot!(ax, cooc_basic; ribbon_alpha_by_value=true, ribbon_alpha=0.7)
+ax = Axis(fig[1,1], title="Strength-based Opacity")
+chordplot!(ax, cooc_basic; alpha_by_value=true, ribbon_alpha=0.7)
 setup_chord_axis!(ax)
 save(joinpath(output_dir, "opacity.png"), fig)
 

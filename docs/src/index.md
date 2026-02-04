@@ -65,15 +65,15 @@ This example demonstrates data filtering using `filter_top_n()`, which keeps onl
 
 ![Filtered Example](assets/examples/filtered.png)
 
-### Value-based Opacity
+### Strength-based Opacity
 
-Here, ribbon opacity varies based on the co-occurrence value using `ribbon_alpha_by_value=true`. Thicker ribbons (higher values) appear more opaque, while thinner ribbons (lower values) are more transparent. This creates a visual hierarchy where important connections stand out more prominently.
+With **`alpha_by_value=true`**, opacity is scaled by strength for ribbons, arcs, and labels: ribbons by co-occurrence value, arcs and labels by total flow. Weaker connections and nodes become dimmer; one switch for consistent styling.
 
 **What's different:**
-- `ribbon_alpha_by_value=true` enables value-based opacity scaling
-- Ribbons with higher co-occurrence counts are more opaque
-- Ribbons with lower counts are more transparent
-- Creates a visual emphasis on stronger relationships
+- `alpha_by_value=true` scales opacity by strength everywhere
+- Ribbons: higher co-occurrence value → more opaque
+- Arcs and labels: higher total flow → more opaque
+- Minimum opacity 10% so nothing disappears
 
 ![Opacity Example](assets/examples/opacity.png)
 

@@ -1,6 +1,6 @@
 # Customization
 
-Customize the appearance of your chord diagrams.
+Customize the appearance of your chord diagrams. Parameters are designed to work together: **`alpha`** multiplies all opacities; **`alpha_by_value`** applies strength-based opacity to ribbons, arcs, and labels; **focus** dimming affects labels, arcs, and ribbons automatically. No conflicting combinations.
 
 ## Layout Parameters
 
@@ -28,24 +28,42 @@ Control ribbon appearance:
 
 ```julia
 chordplot!(ax, cooc;
-    ribbon_alpha = 0.65,              # Transparency
-    ribbon_alpha_by_value = true,     # Scale opacity by value
-    ribbon_alpha_scale = :linear,      # :linear or :log
-    ribbon_tension = 0.5,              # Bezier curve tension
-    min_ribbon_value = 0               # Hide ribbons below this value
+    ribbon_alpha = 0.65,
+    ribbon_alpha_scale = :linear,      # :linear or :log (when alpha_by_value = true)
+    ribbon_tension = 0.5,
+    min_ribbon_value = 0
 )
 ```
 
-```@raw html
-<img src="assets/examples/opacity.png" alt="Value-based Opacity" style="max-width: 600px;"/>
+## Strength-based opacity (one switch for all)
+
+Use **`alpha_by_value = true`** to scale opacity by strength for **ribbons, arcs, and labels** together: ribbons by co-occurrence value, arcs and labels by total flow of that label. Weaker connections and weaker nodes become dimmer; no extra options needed.
+
+```julia
+chordplot!(ax, cooc; alpha_by_value = true)
+# Optional: log scale for better spread of small values
+chordplot!(ax, cooc; alpha_by_value = true, ribbon_alpha_scale = :log)
 ```
 
-**What this shows:** This example uses `ribbon_alpha_by_value=true` to make ribbon opacity vary based on co-occurrence value. Compare this to the basic example: here, thicker ribbons (higher co-occurrence counts) appear more opaque and prominent, while thinner ribbons (lower counts) are more transparent. This creates a visual hierarchy where the most important connections stand out clearly, while weaker connections fade into the background. The effect is subtle but effective - it helps guide the eye to the strongest relationships in your data.
+```@raw html
+<img src="assets/examples/opacity.png" alt="Strength-based Opacity" style="max-width: 600px;"/>
+```
 
-**Value-based opacity** makes larger connections more visible:
 - Minimum opacity: 10% (never fully invisible)
-- Maximum opacity: `ribbon_alpha`
-- Use `:log` scale for better distribution with small integer values
+- Ribbons: opacity by co-occurrence value (stronger link → more opaque)
+- Arcs and labels: opacity by total flow of that label (stronger node → more opaque)
+
+## Global opacity
+
+Use **`alpha`** to fade the whole diagram: `alpha = 0.7` multiplies arc, ribbon, and label opacity by 0.7. Combines with strength-based opacity when `alpha_by_value = true`.
+
+## Focus (dim a subset of labels)
+
+Set **`focus_group`** (e.g. `:V_call`) and **`focus_labels`** (labels to keep highlighted). Non-focused labels in that group are dimmed automatically: their label, arc, and any ribbons touching them use `dim_color` and `dim_alpha`. No extra steps.
+
+```julia
+chordplot!(ax, cooc; focus_group = :V_call, focus_labels = ["V1", "V2"])
+```
 
 ## Arc Styling
 
