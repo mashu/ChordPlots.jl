@@ -90,12 +90,13 @@ function compute_layout(
 )
     n = nlabels(cooc)
     
-    # Calculate total flow per label
-    flows = [total_flow(cooc, i) for i in 1:n]
+    # Calculate total flow per label (use absolute values for layout in case of signed matrices)
+    # This handles diff() results where values can be negative
+    flows = [abs_total_flow(cooc, i) for i in 1:n]
     total_flow_sum = sum(flows)
     
     if total_flow_sum ≤ 0
-        error("Co-occurrence matrix has no positive values")
+        error("Co-occurrence matrix has no non-zero values")
     end
     
     # Angle allocation: gap_fraction reserves that fraction of 2π for gaps; arc_scale
@@ -202,17 +203,18 @@ function compute_ribbon_endpoints(
     n = nlabels(cooc)
     power = Float64(ribbon_width_power)
     
-    # When power != 1, precompute per-arc sum of (value/flow)^power for normalization
+    # When power != 1, precompute per-arc sum of (|value|/flow)^power for normalization
+    # Use absolute values for sizing (handles signed diff matrices)
     arc_sum_power = zeros(Float64, n)
     if power != 1.0
         for i in 1:n
             for j in (i+1):n
-                value = cooc[i, j]
-                if value > 0
+                abs_value = abs(cooc[i, j])
+                if abs_value > 0
                     src_flow = arcs[i].value
                     tgt_flow = arcs[j].value
-                    src_flow > 0 && (arc_sum_power[i] += (value / src_flow)^power)
-                    tgt_flow > 0 && (arc_sum_power[j] += (value / tgt_flow)^power)
+                    src_flow > 0 && (arc_sum_power[i] += (abs_value / src_flow)^power)
+                    tgt_flow > 0 && (arc_sum_power[j] += (abs_value / tgt_flow)^power)
                 end
             end
         end
@@ -224,7 +226,9 @@ function compute_ribbon_endpoints(
     for i in 1:n
         for j in (i+1):n
             value = cooc[i, j]
-            if value > 0
+            abs_value = abs(value)
+            # Include ribbons with non-zero absolute value (handles signed matrices)
+            if abs_value > 0
                 src_arc = arcs[i]
                 tgt_arc = arcs[j]
                 src_arc_span = arc_span(src_arc)
@@ -232,12 +236,13 @@ function compute_ribbon_endpoints(
                 src_flow = src_arc.value
                 tgt_flow = tgt_arc.value
                 
+                # Use absolute value for width computation
                 if power == 1.0
-                    src_width = src_flow > 0 ? src_arc_span * (value / src_flow) : 0.0
-                    tgt_width = tgt_flow > 0 ? tgt_arc_span * (value / tgt_flow) : 0.0
+                    src_width = src_flow > 0 ? src_arc_span * (abs_value / src_flow) : 0.0
+                    tgt_width = tgt_flow > 0 ? tgt_arc_span * (abs_value / tgt_flow) : 0.0
                 else
-                    src_ratio = src_flow > 0 ? (value / src_flow)^power : 0.0
-                    tgt_ratio = tgt_flow > 0 ? (value / tgt_flow)^power : 0.0
+                    src_ratio = src_flow > 0 ? (abs_value / src_flow)^power : 0.0
+                    tgt_ratio = tgt_flow > 0 ? (abs_value / tgt_flow)^power : 0.0
                     src_width = arc_sum_power[i] > 0 ? src_arc_span * src_ratio / arc_sum_power[i] : 0.0
                     tgt_width = arc_sum_power[j] > 0 ? tgt_arc_span * tgt_ratio / arc_sum_power[j] : 0.0
                 end
@@ -250,6 +255,7 @@ function compute_ribbon_endpoints(
                 tgt_end = tgt_start + tgt_width
                 positions[j] += tgt_width
                 
+                # Store original (possibly signed) value for coloring
                 push!(ribbons, Ribbon{Float64}(
                     RibbonEndpoint{Float64}(i, src_start, src_end),
                     RibbonEndpoint{Float64}(j, tgt_start, tgt_end),

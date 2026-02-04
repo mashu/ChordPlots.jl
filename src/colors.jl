@@ -54,6 +54,27 @@ struct GradientColorScheme <: AbstractColorScheme
     range::Tuple{Float64, Float64}
 end
 
+"""
+    DivergingColorScheme{C<:Colorant}
+
+Color scheme for signed values (e.g., differences) using a diverging colormap.
+Maps negative values to one color, zero to neutral, positive to another color.
+
+# Fields
+- `negative_color::C`: Color for most negative values
+- `neutral_color::C`: Color for zero/neutral values
+- `positive_color::C`: Color for most positive values
+- `range::Tuple{Float64, Float64}`: (min, max) value range for normalization
+- `symmetric::Bool`: If true, range is symmetric around zero (max absolute value)
+"""
+struct DivergingColorScheme{C<:Colorant} <: AbstractColorScheme
+    negative_color::C
+    neutral_color::C
+    positive_color::C
+    range::Tuple{Float64, Float64}
+    symmetric::Bool
+end
+
 #==============================================================================#
 # Color Palettes
 #==============================================================================#
@@ -219,6 +240,84 @@ function gradient_colors(;
     GradientColorScheme(colormap, (min_val, max_val))
 end
 
+"""
+    diverging_colors(cooc::AbstractChordData; negative=:steelblue, neutral=:white, positive=:firebrick, symmetric=true)
+
+Create a diverging color scheme for signed values (e.g., from `diff()`).
+
+Ribbons are colored by their value: negative → neutral → positive.
+Use with `diff(a, b; absolute=false)` to visualize increases vs decreases.
+
+# Arguments
+- `cooc`: The chord data (used to determine value range)
+- `negative`: Color for most negative values (default: steel blue)
+- `neutral`: Color for zero (default: white)
+- `positive`: Color for most positive values (default: firebrick red)
+- `symmetric`: If true (default), range is symmetric around zero
+
+# Example
+```julia
+d = diff(cooc_after, cooc_before; absolute=false)  # positive = increase
+fig, ax, plt = chordplot(d; colorscheme=diverging_colors(d))
+```
+"""
+function diverging_colors(
+    cooc::AbstractChordData;
+    negative::Union{Colorant, Symbol} = RGB(0.27, 0.51, 0.71),  # steelblue
+    neutral::Union{Colorant, Symbol} = RGB(0.97, 0.97, 0.97),   # near-white
+    positive::Union{Colorant, Symbol} = RGB(0.70, 0.13, 0.13),  # firebrick
+    symmetric::Bool = true
+)
+    # Convert symbols to colors if needed
+    neg_c = negative isa Symbol ? parse(Colorant, string(negative)) : negative
+    neu_c = neutral isa Symbol ? parse(Colorant, string(neutral)) : neutral
+    pos_c = positive isa Symbol ? parse(Colorant, string(positive)) : positive
+    
+    # Get value range from matrix
+    n = nlabels(cooc)
+    vals = Float64[]
+    for j in 2:n
+        for i in 1:(j-1)
+            push!(vals, Float64(cooc.matrix[i, j]))
+        end
+    end
+    
+    if isempty(vals)
+        min_val, max_val = -1.0, 1.0
+    else
+        min_val = minimum(vals)
+        max_val = maximum(vals)
+    end
+    
+    # Symmetric: use max absolute value for both ends
+    if symmetric
+        abs_max = max(abs(min_val), abs(max_val))
+        min_val = -abs_max
+        max_val = abs_max
+    end
+    
+    # Ensure range is not zero
+    if min_val ≈ max_val
+        min_val = min_val - 1.0
+        max_val = max_val + 1.0
+    end
+    
+    DivergingColorScheme(RGB(neg_c), RGB(neu_c), RGB(pos_c), (min_val, max_val), symmetric)
+end
+
+"""
+    diff_colors(cooc::AbstractChordData; kwargs...)
+
+Alias for `diverging_colors` - creates a color scheme for difference matrices.
+
+# Example
+```julia
+d = diff(cooc_after, cooc_before; absolute=false)
+chordplot(d; colorscheme=diff_colors(d))
+```
+"""
+diff_colors(cooc::AbstractChordData; kwargs...) = diverging_colors(cooc; kwargs...)
+
 #==============================================================================#
 # Color Resolution
 #==============================================================================#
@@ -283,6 +382,60 @@ function resolve_ribbon_color(
         weighted_color_mean(0.5, scheme.colors[src_idx], scheme.colors[tgt_idx])
     else
         scheme.colors[src_idx]
+    end
+end
+
+function resolve_ribbon_color(
+    scheme::DivergingColorScheme,
+    ribbon::Ribbon,
+    cooc::AbstractChordData;
+    blend::Bool = true  # ignored for diverging - color is by value
+)
+    # Color by ribbon value using diverging scale
+    diverging_color(scheme, ribbon.value)
+end
+
+function resolve_arc_color(
+    scheme::DivergingColorScheme,
+    arc::ArcSegment,
+    cooc::AbstractChordData
+)
+    # For arcs in diverging scheme, use neutral color (arcs don't have signed meaning)
+    # Or could compute net flow - for now, neutral gray
+    scheme.neutral_color
+end
+
+"""
+    diverging_color(scheme::DivergingColorScheme, value::Real) -> RGB
+
+Map a value to a color on the diverging scale.
+"""
+function diverging_color(scheme::DivergingColorScheme, value::Real)
+    min_val, max_val = scheme.range
+    
+    # weighted_color_mean(w, c1, c2) returns w*c1 + (1-w)*c2
+    # w=0 → c2, w=1 → c1
+    
+    if value ≤ 0
+        # Negative side: neutral (at 0) to negative_color (at min_val)
+        if min_val ≥ 0
+            t = 0.0
+        else
+            t = clamp(value / min_val, 0.0, 1.0)  # t=0 at zero, t=1 at min_val
+        end
+        # t=0 -> neutral, t=1 -> negative_color
+        # Use w=t with c1=negative, c2=neutral: w=0->neutral, w=1->negative ✓
+        weighted_color_mean(t, scheme.negative_color, scheme.neutral_color)
+    else
+        # Positive side: neutral (at 0) to positive_color (at max_val)
+        if max_val ≤ 0
+            t = 0.0
+        else
+            t = clamp(value / max_val, 0.0, 1.0)  # t=0 at zero, t=1 at max_val
+        end
+        # t=0 -> neutral, t=1 -> positive_color
+        # Use w=t with c1=positive, c2=neutral: w=0->neutral, w=1->positive ✓
+        weighted_color_mean(t, scheme.positive_color, scheme.neutral_color)
     end
 end
 

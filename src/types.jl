@@ -171,6 +171,19 @@ function total_flow(c::AbstractChordData, label::AbstractString)
     total_flow(c, c.label_to_index[label])
 end
 
+"""
+    abs_total_flow(c::AbstractChordData, label_idx::Int) -> Float64
+
+Sum of absolute values in row `label_idx`. Use this for layout computation
+when the matrix may contain negative values (e.g., from `diff()`).
+"""
+function abs_total_flow(c::AbstractChordData, label_idx::Int)
+    sum(abs, @view c.matrix[label_idx, :])
+end
+function abs_total_flow(c::AbstractChordData, label::AbstractString)
+    abs_total_flow(c, c.label_to_index[label])
+end
+
 function get_group(c::AbstractChordData, label_idx::Int)::Symbol
     for g in c.groups
         if label_idx in g.indices

@@ -41,6 +41,7 @@ makedocs(
             "Filtering" => "user_guide/filtering.md",
             "Color Schemes" => "user_guide/colors.md",
             "Layout Configuration" => "user_guide/layout.md",
+            "Comparing Matrices" => "user_guide/comparison.md",
         ],
         "Examples" => [
             "Basic Example" => "examples/basic.md",

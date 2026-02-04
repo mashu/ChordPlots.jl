@@ -325,16 +325,17 @@ end
 expand_labels(cooc1::AbstractChordData, coocs::AbstractChordData...) = expand_labels([cooc1, coocs...])
 
 """
-    diff(a::AbstractChordData, b::AbstractChordData; absolute=true) -> NormalizedCoOccurrenceMatrix
+    diff(a::AbstractChordData, b::AbstractChordData; absolute=false) -> NormalizedCoOccurrenceMatrix
 
 Compute the difference between two co-occurrence matrices: `a - b`. Both matrices are
 first normalized (so differences are in frequency space), then aligned to a common
 label set. Use this to visualize **what changed** between two conditions.
     
 # Keywords
-- `absolute::Bool = true`: If `true`, return absolute differences `|a - b|` (all positive, 
-  thickest ribbons = biggest changes). If `false`, return signed differences (positive 
-  where `a > b`, negative where `a < b`).
+- `absolute::Bool = false`: If `true`, return absolute differences `|a - b|` (all positive, 
+  thickest ribbons = biggest changes). If `false` (default), return signed differences 
+  (positive where `a > b`, negative where `a < b`) — use with [`diverging_colors`](@ref) 
+  or [`diff_colors`](@ref) to show increases (red) vs decreases (blue).
 
 # Returns
 A `NormalizedCoOccurrenceMatrix` with the differences. Note: the result does **not** sum 
@@ -346,16 +347,18 @@ to 1 (it's a difference map, not a probability distribution).
 cooc_wt = cooccurrence_matrix(df_wildtype, [:V_call, :J_call])
 cooc_ko = cooccurrence_matrix(df_knockout, [:V_call, :J_call])
 
-# Compute absolute difference (biggest changes = thickest ribbons)
-diff_cooc = diff(cooc_wt, cooc_ko)
+# Signed differences with diverging colormap (blue = decrease, red = increase)
+d = diff(cooc_ko, cooc_wt)  # ko - wt: positive means KO has more
+chordplot(d; colorscheme=diff_colors(d))
 
-# Plot with a red colorscheme to highlight differences
-chordplot(diff_cooc; colorscheme = :Reds)
+# Or absolute differences (just magnitude of change)
+d_abs = diff(cooc_ko, cooc_wt; absolute=true)
+chordplot(d_abs; colorscheme=:Reds)
 ```
 
-See also: [`normalize`](@ref), [`expand_labels`](@ref)
+See also: [`normalize`](@ref), [`expand_labels`](@ref), [`diverging_colors`](@ref), [`diff_colors`](@ref)
 """
-function Base.diff(a::AbstractChordData, b::AbstractChordData; absolute::Bool = true)
+function Base.diff(a::AbstractChordData, b::AbstractChordData; absolute::Bool = false)
     # Normalize both to frequency space
     norm_a = normalize(a)
     norm_b = normalize(b)

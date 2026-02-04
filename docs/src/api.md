@@ -60,12 +60,15 @@ ChordLayout
 ```@docs
 group_colors
 gradient_colors
+diverging_colors
+diff_colors
 with_alpha
 darken
 lighten
 GroupColorScheme
 CategoricalColorScheme
 GradientColorScheme
+DivergingColorScheme
 ```
 
 **`categorical_colors(n::Int; palette=:default)`** - Create n distinguishable colors using Makie's default categorical palette (same as AlgebraOfGraphics uses - Wong colors, colorblind-friendly).

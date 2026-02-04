@@ -67,8 +67,8 @@ export ChordLayout, ChordStyle
 export LayoutConfig
 
 # Export color types and functions
-export AbstractColorScheme, GroupColorScheme, CategoricalColorScheme, GradientColorScheme
-export group_colors, categorical_colors, gradient_colors
+export AbstractColorScheme, GroupColorScheme, CategoricalColorScheme, GradientColorScheme, DivergingColorScheme
+export group_colors, categorical_colors, gradient_colors, diverging_colors, diff_colors
 export with_alpha, darken, lighten
 export resolve_arc_color, resolve_ribbon_color
 

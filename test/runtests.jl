@@ -358,6 +358,53 @@ using Colors
             light = lighten(c, 0.2)
             @test light.r > c.r
         end
+        
+        @testset "Diverging colors" begin
+            # Create two matrices with different patterns
+            df1 = DataFrame(V=["V1","V1"], D=["D1","D2"], J=["J1","J1"])
+            df2 = DataFrame(V=["V2","V2"], D=["D1","D1"], J=["J2","J2"])
+            cooc1 = cooccurrence_matrix(df1, [:V, :D, :J])
+            cooc2 = cooccurrence_matrix(df2, [:V, :D, :J])
+            
+            # Compute signed diff
+            d = diff(cooc2, cooc1)
+            @test any(x -> x < 0, d.matrix)  # Should have negative values
+            @test any(x -> x > 0, d.matrix)  # Should have positive values
+            
+            # Create diverging color scheme
+            cs = diverging_colors(d)
+            @test cs isa DivergingColorScheme
+            @test cs.symmetric == true
+            @test cs.range[1] < 0 && cs.range[2] > 0
+            
+            # diff_colors is alias
+            cs2 = diff_colors(d)
+            @test cs2 isa DivergingColorScheme
+            
+            # Test color mapping
+            min_val, max_val = cs.range
+            color_neg = ChordPlots.diverging_color(cs, min_val)
+            color_neu = ChordPlots.diverging_color(cs, 0.0)
+            color_pos = ChordPlots.diverging_color(cs, max_val)
+            
+            # Negative should be bluish (default), positive should be reddish
+            @test color_neg.r < color_neg.b  # blue dominant
+            @test color_pos.r > color_pos.b  # red dominant
+            @test isapprox(color_neu.r, color_neu.g, atol=0.1)  # neutral ~white
+            @test isapprox(color_neu.g, color_neu.b, atol=0.1)
+            
+            # Layout should work with signed values
+            layout = compute_layout(d)
+            @test narcs(layout) > 0
+            @test nribbons(layout) > 0
+            
+            # Ribbon color resolution
+            if !isempty(layout.ribbons)
+                r = layout.ribbons[1]
+                ribbon_color = resolve_ribbon_color(cs, r, d)
+                @test ribbon_color isa RGB
+            end
+        end
     end
     
     @testset "Edge Cases" begin
