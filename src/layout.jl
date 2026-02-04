@@ -18,7 +18,7 @@ Configuration for layout computation. Parameters are grouped below; they work to
 
 ## Arc and gap layout (angle allocation)
 - `gap_fraction::T`: Fraction of the full circle (2π) reserved for gaps between arcs (baseline)
-- `arc_scale::T`: Scale for the arc (content) portion only. Content = (1 - gap_fraction)*arc_scale of 2π; rest is gap. Use &lt; 1 for extra separation.
+- `arc_scale::T`: Scale for the arc (content) portion only. Content = (1 - gap_fraction)*arc_scale of 2π; rest is gap. Use < 1 for extra separation.
 
 ## Orientation
 - `start_angle::T`: Starting angle (0 = right, π/2 = top)
@@ -29,7 +29,7 @@ Configuration for layout computation. Parameters are grouped below; they work to
 - `label_order::Union{Nothing, Vector{Int}}`: If set, fixed order of label indices on the circle (overrides `sort_by`)
 
 ## Ribbon thickness
-- `ribbon_width_power::T`: Exponent for ribbon width (value/flow)^power; &gt; 1 makes thick vs thin more dramatic
+- `ribbon_width_power::T`: Exponent for ribbon width (value/flow)^power; > 1 makes thick vs thin more dramatic
 """
 struct LayoutConfig{T<:Real}
     inner_radius::T
