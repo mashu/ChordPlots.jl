@@ -281,6 +281,50 @@ function expand_cooc_to_canonical(cooc::AbstractChordData, canonical_labels::Vec
 end
 
 """
+    expand_labels(coocs::AbstractVector{<:AbstractChordData}) -> Vector{AbstractChordData}
+
+Expand all matrices to a common label set (union of all labels per group). Labels not
+present in a matrix get zero flow/connections. Use this when you want to plot multiple
+matrices with the **same labels appearing in the same positions**, even if some matrices
+are missing certain labels.
+
+Returns matrices of the same type as input (CoOccurrenceMatrix or NormalizedCoOccurrenceMatrix).
+
+# Example
+```julia
+# Two matrices with different genes
+cooc_A = cooccurrence_matrix(df_A, [:V_call, :J_call])
+cooc_B = cooccurrence_matrix(df_B, [:V_call, :J_call])
+
+# Expand to union of labels (missing labels get zero flow → empty arcs)
+expanded_A, expanded_B = expand_labels([cooc_A, cooc_B])
+
+# Now both have the same labels; plot with consistent positions
+order = label_order(expanded_A)  # or label_order(expanded_B) — same labels
+chordplot!(ax1, expanded_A; label_order = order)
+chordplot!(ax2, expanded_B; label_order = order)
+```
+"""
+function expand_labels(coocs::AbstractVector{<:AbstractChordData})
+    isempty(coocs) && return AbstractChordData[]
+    canonical_labels, canonical_groups = union_labels_and_groups(coocs)
+    result = AbstractChordData[]
+    for c in coocs
+        expanded = expand_cooc_to_canonical(c, canonical_labels, canonical_groups)
+        # Preserve type: if input was NormalizedCoOccurrenceMatrix, convert back
+        if c isa NormalizedCoOccurrenceMatrix
+            push!(result, NormalizedCoOccurrenceMatrix(expanded.matrix, expanded.labels, expanded.groups; check_sum=false))
+        else
+            push!(result, expanded)
+        end
+    end
+    result
+end
+
+# Varargs convenience
+expand_labels(cooc1::AbstractChordData, coocs::AbstractChordData...) = expand_labels([cooc1, coocs...])
+
+"""
     mean_normalized(coocs::AbstractVector{<:AbstractChordData}) -> NormalizedCoOccurrenceMatrix
 
 Combine multiple co-occurrence matrices by normalizing each by its own total sum

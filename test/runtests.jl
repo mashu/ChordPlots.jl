@@ -120,6 +120,36 @@ using Colors
             @test length(combined.labels) == 6
             @test "V1" in combined.labels && "V2" in combined.labels
         end
+        
+        @testset "expand_labels" begin
+            df1 = DataFrame(V=["V1", "V1"], D=["D1", "D2"], J=["J1", "J1"])
+            df2 = DataFrame(V=["V2", "V2"], D=["D1", "D3"], J=["J1", "J2"])
+            cooc1 = cooccurrence_matrix(df1, [:V, :D, :J])
+            cooc2 = cooccurrence_matrix(df2, [:V, :D, :J])
+            
+            # Different labels initially
+            @test nlabels(cooc1) == 4  # V1, D1, D2, J1
+            @test nlabels(cooc2) == 5  # V2, D1, D3, J1, J2
+            
+            # After expansion, both have union of labels
+            exp1, exp2 = expand_labels(cooc1, cooc2)
+            @test nlabels(exp1) == 7  # V1, V2, D1, D2, D3, J1, J2
+            @test nlabels(exp2) == 7
+            @test exp1.labels == exp2.labels  # Same labels!
+            
+            # V2 has zero flow in exp1 (wasn't in cooc1)
+            v2_idx = exp1.label_to_index["V2"]
+            @test total_flow(exp1, v2_idx) == 0
+            
+            # V1 has zero flow in exp2 (wasn't in cooc2)
+            v1_idx = exp2.label_to_index["V1"]
+            @test total_flow(exp2, v1_idx) == 0
+            
+            # D1 has flow in both (was in both)
+            d1_idx = exp1.label_to_index["D1"]
+            @test total_flow(exp1, d1_idx) > 0
+            @test total_flow(exp2, d1_idx) > 0
+        end
     end
     
     @testset "Layout Computation" begin
@@ -179,6 +209,55 @@ using Colors
             config = LayoutConfig(label_order = [cooc.label_to_index[l] for l in names_in_order])
             layout = compute_layout(cooc, config)
             @test narcs(layout) == 6
+        end
+        
+        @testset "label_order() for multiple matrices" begin
+            # Two DataFrames with partially overlapping labels
+            df1 = DataFrame(V=["V1", "V1"], D=["D1", "D2"], J=["J1", "J1"])
+            df2 = DataFrame(V=["V2", "V2"], D=["D1", "D3"], J=["J1", "J2"])
+            cooc1 = cooccurrence_matrix(df1, [:V, :D, :J])
+            cooc2 = cooccurrence_matrix(df2, [:V, :D, :J])
+            
+            # Should include union of all labels (V1, V2, D1, D2, D3, J1, J2)
+            order_all = label_order(cooc1, cooc2)  # varargs
+            @test length(order_all) == 7
+            @test "V1" in order_all && "V2" in order_all
+            @test "D1" in order_all && "D2" in order_all && "D3" in order_all
+            @test "J1" in order_all && "J2" in order_all
+            
+            # With include_all=false, only common labels
+            order_common = label_order([cooc1, cooc2]; include_all=false)
+            @test "D1" in order_common && "J1" in order_common
+            @test !("V1" in order_common)  # V1 only in cooc1
+            @test !("D2" in order_common)  # D2 only in cooc1
+            
+            # sort_by options
+            order_val = label_order([cooc1, cooc2]; sort_by=:value)
+            @test length(order_val) == 7
+            order_none = label_order([cooc1, cooc2]; sort_by=:none)
+            @test length(order_none) == 7
+            
+            # Test that superset order can be applied to individual matrices
+            # (order_all has 7 labels but cooc1 only has 5, cooc2 only has 5)
+            # resolve_label_order should filter to matching labels while preserving order
+            resolved1 = ChordPlots.resolve_label_order(cooc1, order_all)
+            resolved2 = ChordPlots.resolve_label_order(cooc2, order_all)
+            @test resolved1 !== nothing
+            @test resolved2 !== nothing
+            @test length(resolved1) == nlabels(cooc1)  # 5 labels
+            @test length(resolved2) == nlabels(cooc2)  # 5 labels
+            
+            # The relative order of common labels should be the same
+            # Find indices of D1 and J1 in both resolved orders
+            d1_pos_1 = findfirst(i -> cooc1.labels[i] == "D1", resolved1)
+            j1_pos_1 = findfirst(i -> cooc1.labels[i] == "J1", resolved1)
+            d1_pos_2 = findfirst(i -> cooc2.labels[i] == "D1", resolved2)
+            j1_pos_2 = findfirst(i -> cooc2.labels[i] == "J1", resolved2)
+            # D1 should come before J1 in both (if order_all has D1 before J1)
+            d1_in_order = findfirst(==("D1"), order_all)
+            j1_in_order = findfirst(==("J1"), order_all)
+            @test (d1_in_order < j1_in_order) == (d1_pos_1 < j1_pos_1)
+            @test (d1_in_order < j1_in_order) == (d1_pos_2 < j1_pos_2)
         end
     end
     

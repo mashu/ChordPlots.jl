@@ -145,14 +145,18 @@ function resolve_label_order(cooc::AbstractChordData, order)
         lo = collect(Int, order)
         return length(lo) == n ? lo : nothing
     elseif order isa AbstractVector{<:AbstractString}
-        length(order) != n && return nothing
-        try
-            idx = [cooc.label_to_index[l] for l in order]
-            sort(idx) == collect(1:n) || return nothing  # must be permutation
-            return idx
-        catch
-            return nothing
+        # Filter to labels that exist in this cooc, preserving order
+        # This allows unified orders from label_order([cooc1, cooc2, ...]) to work
+        idx = Int[]
+        for l in order
+            if haskey(cooc.label_to_index, l)
+                push!(idx, cooc.label_to_index[l])
+            end
         end
+        # Must cover all labels in cooc (superset order is fine, subset is not)
+        length(idx) != n && return nothing
+        sort(idx) == collect(1:n) || return nothing  # must be permutation of 1:n
+        return idx
     else
         return nothing
     end

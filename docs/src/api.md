@@ -26,6 +26,7 @@ filter_top_n
 filter_by_threshold
 normalize
 mean_normalized
+expand_labels
 ```
 
 ## Data Exploration
@@ -43,6 +44,7 @@ value_histogram!
 ```@docs
 filter_ribbons
 filter_ribbons_top_n
+label_order
 LayoutConfig
 ChordLayout
 ```

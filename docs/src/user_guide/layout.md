@@ -44,6 +44,67 @@ These settings work together to create a layout that emphasizes the most importa
 - `:value` - Sort all labels by total flow (descending)
 - `:none` - Use original order
 
+## Consistent Ordering Across Multiple Plots
+
+When comparing chord diagrams from different data sources (e.g. different samples or donors), label order should be consistent so viewers can compare positions. There are two approaches:
+
+### Approach 1: `expand_labels` (show all labels, missing ones as empty arcs)
+
+Use `expand_labels` when you want **all labels to appear in both plots**, even if a label only exists in one matrix. Missing labels appear as empty arcs (zero flow, no ribbons).
+
+```julia
+# Two matrices with different genes
+cooc_A = cooccurrence_matrix(df_A, [:V_call, :J_call])
+cooc_B = cooccurrence_matrix(df_B, [:V_call, :J_call])
+
+# Expand to union of labels (missing labels get zero flow → empty arcs)
+exp_A, exp_B = expand_labels(cooc_A, cooc_B)
+
+# Now both have the same labels; plot with consistent positions
+order = label_order(exp_A)  # or label_order(exp_B) — same labels
+chordplot!(ax1, exp_A; label_order = order)
+chordplot!(ax2, exp_B; label_order = order)
+```
+
+### Approach 2: `label_order` only (each plot shows only its own labels)
+
+Use `label_order` alone when you want each plot to show **only its own labels**, but with shared labels in consistent positions. Labels unique to one matrix won't appear in the other plot.
+
+```julia
+# Get a unified order (union of labels, sorted by combined flow)
+order = label_order(cooc_A, cooc_B)
+
+# Plot with same positions for shared labels; unique labels only in their plot
+chordplot!(ax1, cooc_A; label_order = order)
+chordplot!(ax2, cooc_B; label_order = order)
+```
+
+### Single-Matrix Order (reuse from one plot)
+
+When matrices have the same labels, simply reuse the order from one:
+
+```julia
+# First plot
+fig1, ax1, plt1 = chordplot(cooc_A)
+
+# Extract and reuse its order for a comparable second plot
+order = label_order(cooc_A)
+fig2, ax2, plt2 = chordplot(cooc_B; label_order = order)
+```
+
+### Options for `label_order` with Multiple Matrices
+
+- **`sort_by`**: `:group` (default), `:value`, or `:none` — how labels are sorted.
+- **`include_all`**: If `true` (default), include **all** labels from any matrix. If `false`, include only labels present in **all** matrices (intersection).
+
+```julia
+# Only labels that exist in BOTH matrices
+order_common = label_order(cooc_A, cooc_B; include_all = false)
+
+# Sort by total combined flow across both
+order_by_value = label_order(cooc_A, cooc_B; sort_by = :value)
+```
+
 ## Accessing Layout Data
 
 ```julia

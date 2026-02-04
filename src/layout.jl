@@ -305,6 +305,107 @@ function label_order(
 end
 
 """
+    label_order(coocs::AbstractVector{<:AbstractChordData}; sort_by=:group, include_all=true)
+
+Compute a unified label order from multiple co-occurrence matrices with potentially different
+label sets. Returns a Vector{String} of labels suitable for `chordplot(...; label_order=...)`
+to ensure consistent label positioning across plots.
+
+# Arguments
+- `coocs`: Vector of co-occurrence matrices (may have different labels).
+
+# Keywords
+- `sort_by::Symbol = :group`: Sorting method (`:group` keeps groups together sorted by flow, `:value` sorts all by flow, `:none` uses union order).
+- `include_all::Bool = true`: If `true`, include all labels from the union (labels missing in some matrices contribute zero flow). If `false`, include only labels present in **all** matrices.
+
+# Returns
+- Vector{String} of label names in order.
+
+# Example
+```julia
+# Two matrices with overlapping but different genes
+cooc_A = cooccurrence_matrix(df_A, [:V_call, :J_call])
+cooc_B = cooccurrence_matrix(df_B, [:V_call, :J_call])
+
+# Get a combined order that works for both
+order = label_order([cooc_A, cooc_B])
+
+# Plot with same label positions
+chordplot!(ax1, cooc_A; label_order = order)
+chordplot!(ax2, cooc_B; label_order = order)
+```
+"""
+function label_order(
+    coocs::AbstractVector{<:AbstractChordData};
+    sort_by::Symbol = :group,
+    include_all::Bool = true
+)
+    isempty(coocs) && return String[]
+    
+    # Build union of groups (preserve order from first cooc that has each group)
+    group_order = Symbol[]
+    group_labels = Dict{Symbol, Vector{String}}()  # group => labels in that group
+    label_group = Dict{String, Symbol}()           # label => its group
+    label_flow = Dict{String, Float64}()           # label => summed flow
+    
+    for cooc in coocs
+        for g in cooc.groups
+            if !haskey(group_labels, g.name)
+                push!(group_order, g.name)
+                group_labels[g.name] = String[]
+            end
+            for i in g.indices
+                lbl = cooc.labels[i]
+                if !haskey(label_group, lbl)
+                    label_group[lbl] = g.name
+                    push!(group_labels[g.name], lbl)
+                    label_flow[lbl] = 0.0
+                end
+                label_flow[lbl] += total_flow(cooc, i)
+            end
+        end
+    end
+    
+    # If include_all=false, keep only labels present in ALL matrices
+    if !include_all
+        all_label_sets = [Set(c.labels) for c in coocs]
+        common = intersect(all_label_sets...)
+        for (g, lbls) in group_labels
+            filter!(l -> l in common, lbls)
+        end
+        filter!(kv -> kv.first in common, label_flow)
+    end
+    
+    # Sort within groups or globally
+    if sort_by == :value
+        # Sort all labels by flow descending
+        all_labels = collect(keys(label_flow))
+        sort!(all_labels, by = l -> -label_flow[l])
+        return all_labels
+    elseif sort_by == :group
+        # Keep groups together; within each group sort by flow descending
+        result = String[]
+        for g in group_order
+            lbls = group_labels[g]
+            sort!(lbls, by = l -> -label_flow[l])
+            append!(result, lbls)
+        end
+        return result
+    else  # :none
+        # Just return in the order we encountered them (groups in order, labels in insertion order)
+        result = String[]
+        for g in group_order
+            append!(result, group_labels[g])
+        end
+        return result
+    end
+end
+
+# Varargs convenience: label_order(cooc1, cooc2, ...; kwargs...)
+label_order(cooc1::AbstractChordData, cooc2::AbstractChordData, coocs::AbstractChordData...; kwargs...) =
+    label_order([cooc1, cooc2, coocs...]; kwargs...)
+
+"""
     filter_ribbons(layout::ChordLayout, min_value::Real)
 
 Filter ribbons below a minimum value threshold.
