@@ -29,6 +29,12 @@ mean_normalized
 expand_labels
 ```
 
+## Comparison
+
+```@docs
+Base.diff
+```
+
 ## Data Exploration
 
 Inspect the distribution of co-occurrence values to choose thresholds (e.g. `min_ribbon_value`, `filter_by_threshold`):

@@ -325,6 +325,56 @@ end
 expand_labels(cooc1::AbstractChordData, coocs::AbstractChordData...) = expand_labels([cooc1, coocs...])
 
 """
+    diff(a::AbstractChordData, b::AbstractChordData; absolute=true) -> NormalizedCoOccurrenceMatrix
+
+Compute the difference between two co-occurrence matrices: `a - b`. Both matrices are
+first normalized (so differences are in frequency space), then aligned to a common
+label set. Use this to visualize **what changed** between two conditions.
+    
+# Keywords
+- `absolute::Bool = true`: If `true`, return absolute differences `|a - b|` (all positive, 
+  thickest ribbons = biggest changes). If `false`, return signed differences (positive 
+  where `a > b`, negative where `a < b`).
+
+# Returns
+A `NormalizedCoOccurrenceMatrix` with the differences. Note: the result does **not** sum 
+to 1 (it's a difference map, not a probability distribution).
+
+# Example
+```julia
+# Gene knockout experiment: what connections changed?
+cooc_wt = cooccurrence_matrix(df_wildtype, [:V_call, :J_call])
+cooc_ko = cooccurrence_matrix(df_knockout, [:V_call, :J_call])
+
+# Compute absolute difference (biggest changes = thickest ribbons)
+diff_cooc = diff(cooc_wt, cooc_ko)
+
+# Plot with a red colorscheme to highlight differences
+chordplot(diff_cooc; colorscheme = :Reds)
+```
+
+See also: [`normalize`](@ref), [`expand_labels`](@ref)
+"""
+function Base.diff(a::AbstractChordData, b::AbstractChordData; absolute::Bool = true)
+    # Normalize both to frequency space
+    norm_a = normalize(a)
+    norm_b = normalize(b)
+    
+    # Align to common labels
+    canonical_labels, canonical_groups = union_labels_and_groups([norm_a, norm_b])
+    aligned_a = expand_cooc_to_canonical(norm_a, canonical_labels, canonical_groups)
+    aligned_b = expand_cooc_to_canonical(norm_b, canonical_labels, canonical_groups)
+    
+    # Compute difference
+    diff_mat = aligned_a.matrix .- aligned_b.matrix
+    if absolute
+        diff_mat = abs.(diff_mat)
+    end
+    
+    NormalizedCoOccurrenceMatrix(diff_mat, canonical_labels, canonical_groups; check_sum=false)
+end
+
+"""
     mean_normalized(coocs::AbstractVector{<:AbstractChordData}) -> NormalizedCoOccurrenceMatrix
 
 Combine multiple co-occurrence matrices by normalizing each by its own total sum

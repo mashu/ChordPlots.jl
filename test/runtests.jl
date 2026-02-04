@@ -150,6 +150,34 @@ using Colors
             @test total_flow(exp1, d1_idx) > 0
             @test total_flow(exp2, d1_idx) > 0
         end
+        
+        @testset "diff" begin
+            # Two matrices with some overlap
+            df1 = DataFrame(V=["V1", "V1", "V1", "V1"], D=["D1", "D1", "D2", "D2"], J=["J1", "J1", "J1", "J1"])
+            df2 = DataFrame(V=["V1", "V1"], D=["D1", "D2"], J=["J1", "J1"])
+            cooc1 = cooccurrence_matrix(df1, [:V, :D, :J])
+            cooc2 = cooccurrence_matrix(df2, [:V, :D, :J])
+            
+            # Absolute difference (default)
+            d = diff(cooc1, cooc2)
+            @test d isa ChordPlots.NormalizedCoOccurrenceMatrix
+            @test all(d.matrix .>= 0)  # All absolute values are non-negative
+            @test nlabels(d) == 4  # V1, D1, D2, J1
+            
+            # Signed difference
+            d_signed = diff(cooc1, cooc2; absolute=false)
+            # Some values might be negative (where cooc2 > cooc1 in normalized space)
+            # The matrices are normalized first, so differences depend on frequencies
+            @test d_signed isa ChordPlots.NormalizedCoOccurrenceMatrix
+            
+            # Diff with different labels
+            df3 = DataFrame(V=["V2", "V2"], D=["D1", "D1"], J=["J2", "J2"])
+            cooc3 = cooccurrence_matrix(df3, [:V, :D, :J])
+            d2 = diff(cooc1, cooc3)
+            # Should have union of labels from both
+            @test "V1" in d2.labels && "V2" in d2.labels
+            @test "J1" in d2.labels && "J2" in d2.labels
+        end
     end
     
     @testset "Layout Computation" begin

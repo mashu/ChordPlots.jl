@@ -79,6 +79,8 @@ export filter_by_threshold, filter_top_n, normalize, mean_normalized
 export expand_labels
 export cooccurrence_values, value_histogram, value_histogram!
 
+# Re-export Base.diff extended for AbstractChordData (no need to export, just document)
+
 # Export layout functions
 export compute_layout, filter_ribbons, filter_ribbons_top_n
 export label_order
