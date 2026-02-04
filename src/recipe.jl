@@ -45,9 +45,9 @@ Create a chord diagram from co-occurrence data.
 
 ## Labels
 - `show_labels = true`: Whether to show labels
-- `label_offset = 0.12`: Distance from arc to label (increase for longer labels)
+- `label_offset = 0.12`: Distance from arc to label (increase for longer labels). If you use a larger value, call `setup_chord_axis!(ax; label_offset=...)` with the same value so the axis limits fit the labels and the title does not overlap.
 - `label_fontsize = 10`: Label font size
-- `label_color = :black`: Label color
+- `label_color = :black`: Label color. Use `:group` to color each label by its category (same as arc/ribbon group colors from `colorscheme`).
 - `label_alpha = 0.65`: Transparency for labels (default matches `ribbon_alpha`)
 - `rotate_labels = true`: Rotate labels to follow arcs (avoids upside-down text)
 - `label_justify = :inside`: `:inside` (toward center) or `:outside` (away from center)
@@ -271,7 +271,7 @@ function Makie.plot!(p::ChordPlotType)
     draw_arcs!(p, filtered_cooc_obs, layout_obs, colorscheme_obs, dimmed_indices_obs)
     
     # Draw labels
-    draw_labels!(p, filtered_cooc_obs, layout_obs, dimmed_indices_obs)
+    draw_labels!(p, filtered_cooc_obs, layout_obs, colorscheme_obs, dimmed_indices_obs)
     
     p
 end
@@ -437,13 +437,13 @@ function draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dim
           strokecolor = p.arc_strokecolor)
 end
 
-function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, dimmed_obs)
-    # Only draw if show_labels is true; apply label_alpha and dim_color for dimmed; alpha_by_value scales by total flow
+function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs)
+    # Only draw if show_labels is true; apply label_alpha and dim_color for dimmed; alpha_by_value scales by total flow; label_color = :group uses colorscheme per label
     label_data = lift(
-        cooc_obs, layout_obs, dimmed_obs,
+        cooc_obs, layout_obs, colorscheme_obs, dimmed_obs,
         p.show_labels, p.label_offset, p.rotate_labels, p.label_justify,
         p.label_color, p.label_alpha, p.alpha, p.alpha_by_value, p.alpha_by_value_components, p.ribbon_alpha_scale, p.dim_color, p.dim_alpha
-    ) do cooc, layout, dimmed, show, offset, rotate, justify, label_color, label_alpha, global_alpha, alpha_by_value, components, alpha_scale, dim_color, dim_alpha
+    ) do cooc, layout, cs, dimmed, show, offset, rotate, justify, label_color, label_alpha, global_alpha, alpha_by_value, components, alpha_scale, dim_color, dim_alpha
         
         if !show
             return (Point2f[], String[], Float64[], Symbol[], Symbol[], RGBA{Float64}[])
@@ -473,7 +473,8 @@ function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, dimmed_obs)
         end
         
         dimmed_color = RGBA(dim_color, dim_alpha * global_alpha)
-        
+        use_group_color = label_color === :group
+
         for arc in layout.arcs
             lp = label_position(arc, layout.outer_radius, offset; rotate=rotate, justify=justify)
             push!(positions, lp.point)
@@ -484,6 +485,7 @@ function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, dimmed_obs)
             if arc.label_idx in dimmed
                 push!(colors, dimmed_color)
             else
+                base_color = use_group_color ? resolve_arc_color(cs, arc, cooc) : Makie.to_color(label_color)
                 if alpha_by_value && scale_labels && flow_range > 0
                     if alpha_scale == :log && flow_min > 0
                         norm = (log(arc.value) - log_min) / log_range
@@ -492,9 +494,9 @@ function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, dimmed_obs)
                     end
                     norm = clamp(norm, 0.0, 1.0)
                     a = (min_alpha + norm * (label_alpha - min_alpha)) * global_alpha
-                    push!(colors, RGBA(Makie.to_color(label_color), a))
+                    push!(colors, RGBA(base_color, a))
                 else
-                    push!(colors, RGBA(Makie.to_color(label_color), label_alpha * global_alpha))
+                    push!(colors, RGBA(base_color, label_alpha * global_alpha))
                 end
             end
         end
@@ -573,14 +575,18 @@ end
 #==============================================================================#
 
 """
-    setup_chord_axis!(ax::Axis)
+    setup_chord_axis!(ax::Axis; outer_radius=1.0, label_offset=0.12, padding=0.2)
 
-Configure axis for chord plot display (equal aspect, no decorations).
+Configure axis for chord plot display (equal aspect, no decorations). Sets axis limits
+so that the circle and labels fit: limits extend to `outer_radius + label_offset + padding`.
+Use the same `outer_radius` and `label_offset` as in your `chordplot!` call so that large
+label offsets don't get clipped and the title doesn't overlap the labels.
 """
-function setup_chord_axis!(ax::Axis; padding::Real = 0.2)
+function setup_chord_axis!(ax::Axis; outer_radius::Real = 1.0, label_offset::Real = 0.12, padding::Real = 0.2)
     ax.aspect = DataAspect()
     hidedecorations!(ax)
     hidespines!(ax)
-    limits!(ax, -1-padding, 1+padding, -1-padding, 1+padding)
+    limit = Float64(outer_radius) + Float64(label_offset) + Float64(padding)
+    limits!(ax, -limit, limit, -limit, limit)
     ax
 end
