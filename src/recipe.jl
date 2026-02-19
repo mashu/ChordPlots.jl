@@ -49,7 +49,8 @@ end
 Normalize a value to [0, 1] range using the normalizer's configuration.
 """
 function normalize_value(n::ValueNormalizer, value::Real)::Float64
-    n.range <= 0 && return 1.0
+    # When range is 0, return 0 so alpha = min_alpha (so min_alpha is always respected)
+    n.range <= 0 && return 0.0
     if n.use_log && value > 0
         clamp((log(Float64(value)) - n.log_min) / n.log_range, 0.0, 1.0)
     else
@@ -59,11 +60,13 @@ end
 
 """
 Compute alpha value based on normalized value, scaling from min_alpha to base_alpha.
+Clamps so the result is always in [min_alpha, base_alpha] (so min_alpha is never exceeded downward).
 """
 function compute_scaled_alpha(norm::ValueNormalizer, value::Real, 
                               base_alpha::Float64, min_alpha::Float64)::Float64
     t = normalize_value(norm, abs(value))
-    min_alpha + t * (base_alpha - min_alpha)
+    alpha = min_alpha + t * (base_alpha - min_alpha)
+    clamp(alpha, min(min_alpha, base_alpha), max(min_alpha, base_alpha))
 end
 
 """
