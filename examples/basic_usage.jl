@@ -46,7 +46,7 @@ ax = Axis(fig[1,1], title="VDJ Gene Segment Co-occurrence")
 chordplot!(ax, cooc;
     label_fontsize = 9,
     arc_width = 0.06,
-    ribbon_alpha = 0.6
+    alpha = 0.6
 )
 
 setup_chord_axis!(ax; padding=0.25)

@@ -48,7 +48,7 @@ save(joinpath(output_dir, "filtered.png"), fig)
 println("Generating opacity example...")
 fig = Figure(size=(600, 600))
 ax = Axis(fig[1,1], title="Strength-based Opacity")
-chordplot!(ax, cooc_basic; alpha_by_value=true, ribbon_alpha=0.7)
+chordplot!(ax, cooc_basic; alpha_by_value=true, alpha=0.7)
 setup_chord_axis!(ax)
 save(joinpath(output_dir, "opacity.png"), fig)
 

@@ -62,9 +62,10 @@ include("recipe.jl")
 # Export types
 export AbstractChordData, AbstractLayout, AbstractGeometry
 export CoOccurrenceMatrix, NormalizedCoOccurrenceMatrix, GroupInfo
-export ArcSegment, RibbonEndpoint, Ribbon, RibbonPath
-export ChordLayout, ChordStyle
+export ArcSegment, RibbonEndpoint, Ribbon
+export ChordLayout
 export LayoutConfig
+export ComponentAlpha, ValueScaling
 
 # Export color types and functions
 export AbstractColorScheme, GroupColorScheme, CategoricalColorScheme, GradientColorScheme, DivergingColorScheme

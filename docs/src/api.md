@@ -55,6 +55,13 @@ LayoutConfig
 ChordLayout
 ```
 
+## Opacity Configuration
+
+```@docs
+ComponentAlpha
+ValueScaling
+```
+
 ## Color Functions
 
 ```@docs
@@ -85,7 +92,6 @@ label_positions
 ArcSegment
 RibbonEndpoint
 Ribbon
-RibbonPath
 ```
 
 ## Types

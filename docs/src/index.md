@@ -48,7 +48,7 @@ This is the default chord diagram with standard settings. Labels are arranged ar
 
 **Key features:**
 - Default group-based color scheme (Wong palette)
-- Uniform ribbon opacity (`ribbon_alpha = 0.65`)
+- Fully opaque by default (`alpha = 1.0`)
 - Labels sorted by group
 - Standard inner radius (`inner_radius = 0.92`)
 

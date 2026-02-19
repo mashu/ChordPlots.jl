@@ -284,27 +284,109 @@ narcs(l::ChordLayout) = length(l.arcs)
 nribbons(l::ChordLayout) = length(l.ribbons)
 
 #==============================================================================#
-# Style Configuration
+# Opacity Configuration Types
 #==============================================================================#
 
 """
-    ChordStyle
+    ComponentAlpha
 
-Configuration for chord diagram appearance.
+Named opacity settings for chord diagram components. All values are clamped to [0, 1].
 
 # Fields
-- `arc_width::Float64`: Width of outer arcs
-- `label_offset::Float64`: Distance from arc to label
-- `label_fontsize::Float64`: Font size for labels
-- `ribbon_alpha::Float64`: Transparency for ribbons
-- `show_labels::Bool`: Whether to display labels
-- `rotate_labels::Bool`: Rotate labels to follow arc
+- `ribbons::Float64`: Opacity for ribbons (connections)
+- `arcs::Float64`: Opacity for arcs (outer segments)
+- `labels::Float64`: Opacity for labels
+
+# Constructors
+- `ComponentAlpha(ribbons, arcs, labels)`: Set each component separately
+- `ComponentAlpha(v)`: Set all components to the same value
+- `ComponentAlpha((r, a, l))`: Construct from a tuple
+
+# Example
+```julia
+# All components at 70% opacity
+chordplot(cooc; alpha=ComponentAlpha(0.7))
+
+# Semi-transparent ribbons, solid arcs and labels
+chordplot(cooc; alpha=ComponentAlpha(0.5, 1.0, 1.0))
+
+# Using named arguments for clarity
+chordplot(cooc; alpha=ComponentAlpha(ribbons=0.5, arcs=1.0, labels=1.0))
+```
 """
-Base.@kwdef struct ChordStyle
-    arc_width::Float64 = 0.05
-    label_offset::Float64 = 0.1
-    label_fontsize::Float64 = 10.0
-    ribbon_alpha::Float64 = 0.6
-    show_labels::Bool = true
-    rotate_labels::Bool = true
+struct ComponentAlpha
+    ribbons::Float64
+    arcs::Float64
+    labels::Float64
+    
+    function ComponentAlpha(ribbons::Real, arcs::Real, labels::Real)
+        new(clamp(Float64(ribbons), 0.0, 1.0),
+            clamp(Float64(arcs), 0.0, 1.0),
+            clamp(Float64(labels), 0.0, 1.0))
+    end
 end
+
+# Convenience constructors
+ComponentAlpha(v::Real) = ComponentAlpha(v, v, v)
+ComponentAlpha(t::Tuple{Real, Real, Real}) = ComponentAlpha(t[1], t[2], t[3])
+ComponentAlpha(; ribbons::Real=1.0, arcs::Real=1.0, labels::Real=1.0) = 
+    ComponentAlpha(ribbons, arcs, labels)
+
+"""
+    ValueScaling
+
+Configuration for value-based opacity scaling. When enabled, component opacity
+scales from `min_alpha` (weakest) to the component's base alpha (strongest).
+
+# Fields
+- `enabled::Bool`: Whether scaling is active
+- `ribbons::Bool`: Scale ribbon opacity by co-occurrence value
+- `arcs::Bool`: Scale arc opacity by total flow
+- `labels::Bool`: Scale label opacity by total flow
+- `min_alpha::Float64`: Minimum opacity for weakest values
+- `scale::Symbol`: `:linear` or `:log` scaling
+
+# Constructors
+- `ValueScaling(; enabled, components, min_alpha, scale)`: Full control
+- `ValueScaling(enabled::Bool)`: Quick on/off with defaults
+
+# Example
+```julia
+# Scale all components by value
+chordplot(cooc; alpha_by_value=ValueScaling(enabled=true))
+
+# Scale ribbons and arcs, keep labels solid
+chordplot(cooc; alpha_by_value=ValueScaling(
+    enabled=true, 
+    components=(true, true, false),
+    min_alpha=0.2
+))
+```
+"""
+struct ValueScaling
+    enabled::Bool
+    ribbons::Bool
+    arcs::Bool
+    labels::Bool
+    min_alpha::Float64
+    scale::Symbol
+    
+    function ValueScaling(enabled::Bool, ribbons::Bool, arcs::Bool, labels::Bool, 
+                          min_alpha::Real, scale::Symbol)
+        scale in (:linear, :log) || throw(ArgumentError("scale must be :linear or :log"))
+        new(enabled, ribbons, arcs, labels, clamp(Float64(min_alpha), 0.0, 1.0), scale)
+    end
+end
+
+# Convenience constructors
+function ValueScaling(;
+    enabled::Bool = false,
+    components::NTuple{3, Bool} = (true, true, true),
+    min_alpha::Real = 0.1,
+    scale::Symbol = :linear
+)
+    ValueScaling(enabled, components[1], components[2], components[3], min_alpha, scale)
+end
+
+ValueScaling(enabled::Bool) = ValueScaling(enabled=enabled)
+

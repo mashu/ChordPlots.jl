@@ -5,6 +5,102 @@ using Makie
 using GeometryBasics: Point2f, Polygon
 
 #==============================================================================#
+# Internal Configuration Types
+#==============================================================================#
+
+"""
+Internal configuration for drawing functions. Consolidates all appearance settings.
+"""
+struct DrawConfig
+    alpha::ComponentAlpha
+    scaling::ValueScaling
+    dim_color::RGB{Float64}
+    dim_alpha::Float64
+end
+
+"""
+Internal helper for normalizing values to [0,1] range with optional log scaling.
+Used for value-based opacity calculations.
+"""
+struct ValueNormalizer
+    min_val::Float64
+    range::Float64
+    log_min::Float64
+    log_range::Float64
+    use_log::Bool
+end
+
+function ValueNormalizer(values::AbstractVector{<:Real}, use_log::Bool)
+    isempty(values) && return ValueNormalizer(0.0, 1.0, 0.0, 1.0, false)
+    min_val = Float64(minimum(values))
+    max_val = Float64(maximum(values))
+    range = max_val - min_val
+    
+    if use_log && range > 0 && min_val > 0
+        log_min = log(min_val)
+        log_range = log(max_val) - log_min
+        ValueNormalizer(min_val, range, log_min, log_range, true)
+    else
+        ValueNormalizer(min_val, range, 0.0, 1.0, false)
+    end
+end
+
+"""
+Normalize a value to [0, 1] range using the normalizer's configuration.
+"""
+function normalize_value(n::ValueNormalizer, value::Real)::Float64
+    n.range <= 0 && return 1.0
+    if n.use_log && value > 0
+        clamp((log(Float64(value)) - n.log_min) / n.log_range, 0.0, 1.0)
+    else
+        clamp((Float64(value) - n.min_val) / n.range, 0.0, 1.0)
+    end
+end
+
+"""
+Compute alpha value based on normalized value, scaling from min_alpha to base_alpha.
+"""
+function compute_scaled_alpha(norm::ValueNormalizer, value::Real, 
+                              base_alpha::Float64, min_alpha::Float64)::Float64
+    t = normalize_value(norm, abs(value))
+    min_alpha + t * (base_alpha - min_alpha)
+end
+
+"""
+Parse alpha input into ComponentAlpha. Accepts:
+- Real (single value for all)
+- Tuple{Real,Real,Real} 
+- ComponentAlpha (pass through)
+"""
+function parse_alpha(alpha)::ComponentAlpha
+    if alpha isa ComponentAlpha
+        alpha
+    elseif alpha isa Tuple && length(alpha) >= 3
+        ComponentAlpha(alpha[1], alpha[2], alpha[3])
+    elseif alpha isa AbstractVector && length(alpha) >= 3
+        ComponentAlpha(alpha[1], alpha[2], alpha[3])
+    else
+        ComponentAlpha(Float64(alpha))
+    end
+end
+
+"""
+Parse alpha_by_value input into ValueScaling. Accepts:
+- Bool (simple on/off)
+- ValueScaling (pass through)
+- Tuple of (enabled, components, min_alpha, scale) for legacy compatibility
+"""
+function parse_scaling(scaling, components, min_alpha, scale)::ValueScaling
+    if scaling isa ValueScaling
+        scaling
+    elseif scaling isa Bool
+        ValueScaling(scaling, components[1], components[2], components[3], min_alpha, scale)
+    else
+        ValueScaling(false, true, true, true, 0.1, :linear)
+    end
+end
+
+#==============================================================================#
 # Main Recipe: chordplot
 #==============================================================================#
 
@@ -17,59 +113,56 @@ Create a chord diagram from co-occurrence data.
 # Attributes (grouped by purpose)
 
 ## Radii and arc size
-- `inner_radius = 0.92`: Inner radius for ribbons (closer to outer for less wasted space)
+- `inner_radius = 0.92`: Inner radius for ribbons
 - `outer_radius = 1.0`: Outer radius for arcs
-- `arc_width = 0.08`: Width of arc segments (band thickness around the circle)
+- `arc_width = 0.08`: Width of arc segments
 
-## Arc and gap layout (angle allocation)
-- `gap_fraction = 0.03`: Fraction of the full circle reserved for gaps between arcs (baseline spacing)
-- `arc_scale = 1.0`: Scale for the arc (content) portion only; < 1 uses less space for arcs and adds extra gap. Works with `gap_fraction`: content = (1 - gap_fraction)*arc_scale; rest is gap.
-- `sort_by = :group`: How to order arcs around the circle (`:group`, `:value`, `:none`). Ignored when `label_order` is set.
-- `label_order = nothing`: Fixed order on the circle (vector of label indices or names). When set, overrides `sort_by`.
-
-## Ribbon thickness and visibility
-- `ribbon_width_power = 1.0`: Exponent for proportional ribbon width (value/flow)^power; use > 1 (e.g. `1.5` or `2`) to make thick ribbons visibly thicker and thin ones thinner (more dramatic spread)
-- `min_ribbon_value = 0`: Hide ribbons below this value (use `value_histogram(cooc)` to choose a threshold)
+## Arc and gap layout
+- `gap_fraction = 0.03`: Fraction of circle reserved for gaps
+- `arc_scale = 1.0`: Scale for arc portion; < 1 adds extra gaps
+- `sort_by = :group`: Order arcs by `:group`, `:value`, or `:none`
+- `label_order = nothing`: Fixed order (overrides `sort_by`)
 
 ## Ribbon appearance
-- `ribbon_alpha = 0.65`: Transparency for ribbons
-- `alpha_by_value = false`: When true, scale opacity by **strength** for the components enabled in `alpha_by_value_components`: ribbons by co-occurrence value, arcs and labels by total flow of that label.
-- `alpha_by_value_components = (true, true, true)`: Which parts get strength-based opacity when `alpha_by_value` is true: **(ribbons, arcs, labels)**. Use e.g. `[true, false, false]` to scale only ribbons, or `[false, false, true]` only labels. Tuple or vector of 3 `Bool`s.
-- `ribbon_alpha_scale = :linear`: Scaling for strength-based opacity (`:linear` or `:log`), used for whichever components are enabled in `alpha_by_value_components`
-- `ribbon_tension = 0.5`: Bezier curve tension (0 = straight, 1 = tight)
+- `ribbon_width_power = 1.0`: Exponent for ribbon width
+- `min_ribbon_value = 0`: Hide ribbons below this value
+- `ribbon_tension = 0.5`: Bezier curve tension
 
 ## Arc appearance
-- `arc_strokewidth = 0.5`: Arc border width
-- `arc_strokecolor = :black`: Arc border color
-- `arc_alpha = 0.65`: Transparency for arcs (default matches `ribbon_alpha`)
+- `arc_strokewidth = 0.5`: Border width
+- `arc_strokecolor = :black`: Border color
 
 ## Labels
 - `show_labels = true`: Whether to show labels
-- `label_offset = 0.12`: Distance from arc to label (increase for longer labels). If you use a larger value, call `setup_chord_axis!(ax; label_offset=...)` with the same value so the axis limits fit the labels and the title does not overlap.
-- `label_fontsize = 10`: Label font size
-- `label_color = :black`: Label color. Use `:group` to color each label by its category (same as arc/ribbon group colors from `colorscheme`).
-- `label_alpha = 0.65`: Transparency for labels (default matches `ribbon_alpha`)
-- `rotate_labels = true`: Rotate labels to follow arcs (avoids upside-down text)
-- `label_justify = :inside`: `:inside` (toward center) or `:outside` (away from center)
-- `min_arc_flow = 0`: Hide arcs (and their labels) whose total flow is below this value (reduces clutter)
+- `label_offset = 0.12`: Distance from arc to label
+- `label_fontsize = 10`: Font size
+- `label_color = :black`: Color (use `:group` for category colors)
+- `rotate_labels = true`: Rotate labels to follow arcs
+- `label_justify = :inside`: `:inside` or `:outside`
+- `min_arc_flow = 0`: Hide arcs below this flow
 
 ## Colors
-- `colorscheme = :group`: Color scheme (`:group`, `:categorical`, or an `AbstractColorScheme`)
+- `colorscheme = :group`: Color scheme (`:group`, `:categorical`, or `AbstractColorScheme`)
 
-## Overall opacity
-- `alpha = 1.0`: Global opacity multiplier applied to arcs, ribbons, and labels. Use < 1 (e.g. `0.7`) to fade the whole diagram; individual `arc_alpha`, `ribbon_alpha`, and `label_alpha` are multiplied by this.
+## Opacity
+- `alpha = 1.0`: Opacity for components. Accepts:
+  - `Real`: Same value for all (e.g., `alpha=0.7`)
+  - `Tuple`: Per-component `(ribbons, arcs, labels)` 
+  - `ComponentAlpha`: Named fields for clarity
 
-## Focus (emphasize a subset of labels in one group)
-When `focus_group` and `focus_labels` are set, non-focused labels in that group are dimmed. **Dimming is applied automatically** to their labels, arcs, and any ribbons touching them; no extra steps needed.
-- `focus_group = nothing`: If set (e.g. `:V_call`), only this group uses focus/dim styling
-- `focus_labels = nothing`: Labels in `focus_group` to keep colored; others in that group are dimmed
-- `dim_color = RGB(0.55, 0.55, 0.55)`: Color for dimmed labels, arcs, and ribbons
+## Value-based opacity scaling
+- `alpha_by_value = false`: Scale opacity by value. Accepts `Bool` or `ValueScaling`
+
+When `alpha_by_value=true` (or a `ValueScaling`):
+- Ribbons scale by co-occurrence value
+- Arcs/labels scale by total flow
+- Components excluded from scaling stay fully opaque
+
+## Focus (highlight subset)
+- `focus_group = nothing`: Group to apply focus styling
+- `focus_labels = nothing`: Labels to keep highlighted
+- `dim_color = RGB(0.55, 0.55, 0.55)`: Color for dimmed elements
 - `dim_alpha = 0.25`: Alpha for dimmed elements
-
-# Parameter interactions
-- **Arc/gap**: `gap_fraction` reserves that fraction of the circle for gaps; `arc_scale` then scales the remaining content (arcs). So they combine; use `arc_scale` < 1 for extra separation.
-- **Order**: When `label_order` is set, it overrides `sort_by`.
-- **Filtering**: `min_arc_flow` removes whole arcs (and labels); `min_ribbon_value` only hides ribbons. Both can be used.
 
 # Example
 ```julia
@@ -80,49 +173,54 @@ df = DataFrame(
     D_call = ["D1", "D2", "D1", "D2", "D1"],
     J_call = ["J1", "J1", "J2", "J2", "J1"]
 )
-
 cooc = cooccurrence_matrix(df, [:V_call, :D_call, :J_call])
+
+# Basic plot
 fig, ax, plt = chordplot(cooc)
+
+# Per-component opacity
+chordplot(cooc; alpha=ComponentAlpha(ribbons=0.5, arcs=1.0, labels=1.0))
+
+# Value-based scaling (ribbons and arcs only)
+chordplot(cooc; alpha_by_value=ValueScaling(
+    enabled=true,
+    components=(true, true, false)
+))
 ```
 """
 @recipe(ChordPlot, cooc) do scene
     Attributes(
-        # Radii and arc size
+        # Geometry
         inner_radius = 0.92,
         outer_radius = 1.0,
         arc_width = 0.08,
-        # Arc and gap layout
         gap_fraction = 0.03,
         arc_scale = 1.0,
+        # Order
         sort_by = :group,
         label_order = nothing,
-        # Ribbon thickness and visibility
+        # Ribbons
         ribbon_width_power = 1.0,
         min_ribbon_value = 0,
-        # Ribbon appearance (alpha_by_value + alpha_by_value_components control strength-based opacity)
-        ribbon_alpha = 0.65,
-        alpha_by_value = false,
-        alpha_by_value_components = (true, true, true),  # (ribbons, arcs, labels)
-        ribbon_alpha_scale = :linear,
         ribbon_tension = 0.5,
-        # Arc appearance
+        # Arcs
         arc_strokewidth = 0.5,
         arc_strokecolor = :black,
-        arc_alpha = 0.65,
         # Labels
         show_labels = true,
         label_offset = 0.12,
         label_fontsize = 10,
         label_color = :black,
-        label_alpha = 0.65,
         rotate_labels = true,
         label_justify = :inside,
         min_arc_flow = 0,
         # Colors
         colorscheme = :group,
-        # Overall opacity (multiplier for arc_alpha, ribbon_alpha, label_alpha)
+        # Opacity (Real, Tuple, or ComponentAlpha)
         alpha = 1.0,
-        # Focus (emphasize subset of labels in one group; dimming applied to labels, arcs, and ribbons automatically)
+        # Value-based scaling (Bool or ValueScaling)
+        alpha_by_value = false,
+        # Focus
         focus_group = nothing,
         focus_labels = nothing,
         dim_color = RGB(0.55, 0.55, 0.55),
@@ -268,14 +366,27 @@ function Makie.plot!(p::ChordPlotType)
         end
     end
     
+    # Consolidate drawing configuration into single struct
+    draw_config_obs = lift(p.alpha, p.alpha_by_value, p.dim_color, p.dim_alpha) do alpha, scaling, dim_color, dim_alpha
+        ca = parse_alpha(alpha)
+        vs = if scaling isa ValueScaling
+            scaling
+        elseif scaling isa Bool
+            ValueScaling(scaling)
+        else
+            ValueScaling(false)
+        end
+        DrawConfig(ca, vs, RGB{Float64}(dim_color), Float64(dim_alpha))
+    end
+    
     # Draw ribbons first (behind arcs)
-    draw_ribbons!(p, filtered_cooc_obs, filtered_layout_obs, colorscheme_obs, dimmed_indices_obs)
+    draw_ribbons!(p, filtered_cooc_obs, filtered_layout_obs, colorscheme_obs, dimmed_indices_obs, draw_config_obs)
     
     # Draw arcs
-    draw_arcs!(p, filtered_cooc_obs, layout_obs, colorscheme_obs, dimmed_indices_obs)
+    draw_arcs!(p, filtered_cooc_obs, layout_obs, colorscheme_obs, dimmed_indices_obs, draw_config_obs)
     
     # Draw labels
-    draw_labels!(p, filtered_cooc_obs, layout_obs, colorscheme_obs, dimmed_indices_obs)
+    draw_labels!(p, filtered_cooc_obs, layout_obs, colorscheme_obs, dimmed_indices_obs, draw_config_obs)
     
     p
 end
@@ -284,85 +395,47 @@ end
 # Drawing Components
 #==============================================================================#
 
-function draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs)
-    # Pre-compute all ribbon data
+function draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs, config_obs)
     ribbon_data = lift(
-        cooc_obs, layout_obs, colorscheme_obs, dimmed_obs,
-        p.ribbon_alpha, p.alpha, p.ribbon_tension, p.alpha_by_value, p.alpha_by_value_components, p.ribbon_alpha_scale,
-        p.dim_color, p.dim_alpha
-    ) do cooc, layout, cs, dimmed, ribbon_alpha, global_alpha, tension, alpha_by_value, components, alpha_scale, dim_color, dim_alpha
+        cooc_obs, layout_obs, colorscheme_obs, dimmed_obs, config_obs, p.ribbon_tension
+    ) do cooc, layout, cs, dimmed, cfg, tension
         
-        paths_and_colors = Tuple{Vector{Point2f}, RGBA{Float64}}[]
+        paths_colors = Tuple{Vector{Point2f}, RGBA{Float64}}[]
+        isempty(layout.ribbons) && return paths_colors
         
-        min_alpha = 0.1
-        max_alpha = ribbon_alpha * global_alpha
-        alpha_range = max_alpha - min_alpha
-        scale_ribbons = length(components) >= 1 && components[1]
-        use_value_alpha = alpha_by_value && scale_ribbons && !isempty(layout.ribbons)
-        if use_value_alpha
-            ribbon_values = [r.value for r in layout.ribbons]
-            min_val = minimum(ribbon_values)
-            max_val = maximum(ribbon_values)
-            value_range = max_val - min_val
-            
-            # Use logarithmic scaling to better spread out small integer values
-            # This makes differences more visible when values are close together
-            if value_range > 0 && min_val > 0
-                # Log scale: log(value) normalized to [0, 1]
-                log_min = log(min_val)
-                log_max = log(max_val)
-                log_range = log_max - log_min
-            else
-                log_min = 0.0
-                log_max = 1.0
-                log_range = 1.0
-            end
+        # Build normalizer only if scaling ribbons
+        normalizer = if cfg.scaling.enabled && cfg.scaling.ribbons
+            values = [abs(r.value) for r in layout.ribbons]
+            ValueNormalizer(values, cfg.scaling.scale == :log)
         else
-            # Not using strength-based alpha; dummy values (unused)
-            min_val = 0.0
-            max_val = 1.0
-            value_range = 1.0
-            log_min = 0.0
-            log_max = 1.0
-            log_range = 1.0
+            nothing
         end
         
         for ribbon in layout.ribbons
-            path = ribbon_path(ribbon, layout.inner_radius; 
-                              tension=tension, n_bezier=40)
+            path = ribbon_path(ribbon, layout.inner_radius; tension=tension, n_bezier=40)
             
-            # Dimmed: ribbon touches a dimmed label -> grey and low alpha
-            src_dimmed = ribbon.source.label_idx in dimmed
-            tgt_dimmed = ribbon.target.label_idx in dimmed
-            if src_dimmed || tgt_dimmed
-                base_color = dim_color
-                alpha_use = dim_alpha * global_alpha
+            # Dimmed: ribbon touches a dimmed label
+            is_dimmed = ribbon.source.label_idx in dimmed || ribbon.target.label_idx in dimmed
+            
+            if is_dimmed
+                color = RGBA(cfg.dim_color, cfg.dim_alpha)
             else
                 base_color = resolve_ribbon_color(cs, ribbon, cooc)
-                if use_value_alpha
-                    if value_range > 0
-                        if alpha_scale == :log && min_val > 0
-                            log_value = log(ribbon.value)
-                            normalized_value = (log_value - log_min) / log_range
-                        else
-                            normalized_value = (ribbon.value - min_val) / value_range
-                        end
-                        normalized_value = clamp(normalized_value, 0.0, 1.0)
-                        alpha_use = min_alpha + normalized_value * alpha_range
-                    else
-                        alpha_use = max_alpha
-                    end
+                alpha = if normalizer !== nothing
+                    compute_scaled_alpha(normalizer, ribbon.value, 
+                                         cfg.alpha.ribbons, cfg.scaling.min_alpha)
+                elseif cfg.scaling.enabled && !cfg.scaling.ribbons
+                    1.0  # excluded from scaling = fully opaque
                 else
-                    alpha_use = ribbon_alpha * global_alpha
+                    cfg.alpha.ribbons
                 end
+                color = RGBA(base_color, alpha)
             end
             
-            color = RGBA(base_color, alpha_use)
-            
-            push!(paths_and_colors, (path.points, color))
+            push!(paths_colors, (path.points, color))
         end
         
-        paths_and_colors
+        paths_colors
     end
     
     # Draw each ribbon as a polygon
@@ -378,55 +451,43 @@ function draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, 
     poly!(p, polys_obs; color=colors_obs, strokewidth=0)
 end
 
-function draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs)
-    # Compute arc polygons with alpha (dimmed arcs use dim_color and dim_alpha; alpha_by_value scales by total flow)
+function draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs, config_obs)
     arc_data = lift(
-        cooc_obs, layout_obs, colorscheme_obs, dimmed_obs,
-        p.arc_width, p.arc_alpha, p.alpha, p.alpha_by_value, p.alpha_by_value_components, p.ribbon_alpha_scale, p.dim_color, p.dim_alpha
-    ) do cooc, layout, cs, dimmed, arc_width, arc_alpha, global_alpha, alpha_by_value, components, alpha_scale, dim_color, dim_alpha
+        cooc_obs, layout_obs, colorscheme_obs, dimmed_obs, config_obs, p.arc_width
+    ) do cooc, layout, cs, dimmed, cfg, arc_width
         
         polys_colors = Tuple{Vector{Point2f}, RGBA{Float64}}[]
-        min_alpha = 0.1
-        scale_arcs = length(components) >= 2 && components[2]
-        flows = [arc.value for arc in layout.arcs]
-        flow_min = isempty(flows) ? 0.0 : minimum(flows)
-        flow_max = isempty(flows) ? 1.0 : maximum(flows)
-        flow_range = flow_max - flow_min
-        if alpha_by_value && scale_arcs && flow_range > 0 && flow_min > 0 && alpha_scale == :log
-            log_min = log(flow_min)
-            log_max = log(flow_max)
-            log_range = log_max - log_min
+        isempty(layout.arcs) && return polys_colors
+        
+        # Build normalizer only if scaling arcs
+        normalizer = if cfg.scaling.enabled && cfg.scaling.arcs
+            values = [abs(arc.value) for arc in layout.arcs]
+            ValueNormalizer(values, cfg.scaling.scale == :log)
         else
-            log_min = 0.0
-            log_max = 1.0
-            log_range = 1.0
+            nothing
         end
         
         for arc in layout.arcs
             inner_r = layout.outer_radius - arc_width
             outer_r = layout.outer_radius
-            
             poly_points = arc_polygon(inner_r, outer_r, arc.start_angle, arc.end_angle; n_points=40)
-            if arc.label_idx in dimmed
-                color = dim_color
-                alpha_use = dim_alpha * global_alpha
-            else
-                color = resolve_arc_color(cs, arc, cooc)
-                if alpha_by_value && scale_arcs && flow_range > 0
-                    if alpha_scale == :log && flow_min > 0
-                        norm = (log(arc.value) - log_min) / log_range
-                    else
-                        norm = (arc.value - flow_min) / flow_range
-                    end
-                    norm = clamp(norm, 0.0, 1.0)
-                    alpha_use = (min_alpha + norm * (arc_alpha - min_alpha)) * global_alpha
-                else
-                    alpha_use = arc_alpha * global_alpha
-                end
-            end
-            color_with_alpha = RGBA(color, alpha_use)
             
-            push!(polys_colors, (poly_points, color_with_alpha))
+            if arc.label_idx in dimmed
+                color = RGBA(cfg.dim_color, cfg.dim_alpha)
+            else
+                base_color = resolve_arc_color(cs, arc, cooc)
+                alpha = if normalizer !== nothing
+                    compute_scaled_alpha(normalizer, arc.value, 
+                                         cfg.alpha.arcs, cfg.scaling.min_alpha)
+                elseif cfg.scaling.enabled && !cfg.scaling.arcs
+                    1.0  # excluded from scaling = fully opaque
+                else
+                    cfg.alpha.arcs
+                end
+                color = RGBA(base_color, alpha)
+            end
+            
+            push!(polys_colors, (poly_points, color))
         end
         
         polys_colors
@@ -441,13 +502,11 @@ function draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dim
           strokecolor = p.arc_strokecolor)
 end
 
-function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs)
-    # Only draw if show_labels is true; apply label_alpha and dim_color for dimmed; alpha_by_value scales by total flow; label_color = :group uses colorscheme per label
+function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs, config_obs)
     label_data = lift(
-        cooc_obs, layout_obs, colorscheme_obs, dimmed_obs,
-        p.show_labels, p.label_offset, p.rotate_labels, p.label_justify,
-        p.label_color, p.label_alpha, p.alpha, p.alpha_by_value, p.alpha_by_value_components, p.ribbon_alpha_scale, p.dim_color, p.dim_alpha
-    ) do cooc, layout, cs, dimmed, show, offset, rotate, justify, label_color, label_alpha, global_alpha, alpha_by_value, components, alpha_scale, dim_color, dim_alpha
+        cooc_obs, layout_obs, colorscheme_obs, dimmed_obs, config_obs,
+        p.show_labels, p.label_offset, p.rotate_labels, p.label_justify, p.label_color
+    ) do cooc, layout, cs, dimmed, cfg, show, offset, rotate, justify, label_color
         
         if !show
             return (Point2f[], String[], Float64[], Symbol[], Symbol[], RGBA{Float64}[])
@@ -460,23 +519,17 @@ function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, d
         valigns = Symbol[]
         colors = RGBA{Float64}[]
         
-        min_alpha = 0.1
-        scale_labels = length(components) >= 3 && components[3]
-        flows = [arc.value for arc in layout.arcs]
-        flow_min = isempty(flows) ? 0.0 : minimum(flows)
-        flow_max = isempty(flows) ? 1.0 : maximum(flows)
-        flow_range = flow_max - flow_min
-        if alpha_by_value && scale_labels && flow_range > 0 && flow_min > 0 && alpha_scale == :log
-            log_min = log(flow_min)
-            log_max = log(flow_max)
-            log_range = log_max - log_min
+        isempty(layout.arcs) && return (positions, texts, rotations, haligns, valigns, colors)
+        
+        # Build normalizer only if scaling labels
+        normalizer = if cfg.scaling.enabled && cfg.scaling.labels
+            values = [abs(arc.value) for arc in layout.arcs]
+            ValueNormalizer(values, cfg.scaling.scale == :log)
         else
-            log_min = 0.0
-            log_max = 1.0
-            log_range = 1.0
+            nothing
         end
         
-        dimmed_color = RGBA(dim_color, dim_alpha * global_alpha)
+        dimmed_color = RGBA(cfg.dim_color, cfg.dim_alpha)
         use_group_color = label_color === :group
 
         for arc in layout.arcs
@@ -486,22 +539,20 @@ function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, d
             push!(rotations, lp.angle)
             push!(haligns, lp.halign)
             push!(valigns, lp.valign)
+            
             if arc.label_idx in dimmed
                 push!(colors, dimmed_color)
             else
                 base_color = use_group_color ? resolve_arc_color(cs, arc, cooc) : Makie.to_color(label_color)
-                if alpha_by_value && scale_labels && flow_range > 0
-                    if alpha_scale == :log && flow_min > 0
-                        norm = (log(arc.value) - log_min) / log_range
-                    else
-                        norm = (arc.value - flow_min) / flow_range
-                    end
-                    norm = clamp(norm, 0.0, 1.0)
-                    a = (min_alpha + norm * (label_alpha - min_alpha)) * global_alpha
-                    push!(colors, RGBA(base_color, a))
+                alpha = if normalizer !== nothing
+                    compute_scaled_alpha(normalizer, arc.value, 
+                                         cfg.alpha.labels, cfg.scaling.min_alpha)
+                elseif cfg.scaling.enabled && !cfg.scaling.labels
+                    1.0  # excluded from scaling = fully opaque
                 else
-                    push!(colors, RGBA(base_color, label_alpha * global_alpha))
+                    cfg.alpha.labels
                 end
+                push!(colors, RGBA(RGB(base_color), alpha))
             end
         end
         
