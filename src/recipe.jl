@@ -144,19 +144,11 @@ Create a chord diagram from co-occurrence data.
 ## Colors
 - `colorscheme = :group`: Color scheme (`:group`, `:categorical`, or `AbstractColorScheme`)
 
-## Opacity
-- `alpha = 1.0`: Opacity for components. Accepts:
-  - `Real`: Same value for all (e.g., `alpha=0.7`)
-  - `Tuple`: Per-component `(ribbons, arcs, labels)` 
-  - `ComponentAlpha`: Named fields for clarity
-
-## Value-based opacity scaling
-- `alpha_by_value = false`: Scale opacity by value. Accepts `Bool` or `ValueScaling`
-
-When `alpha_by_value=true` (or a `ValueScaling`):
-- Ribbons scale by co-occurrence value
-- Arcs/labels scale by total flow
-- Components excluded from scaling stay fully opaque
+## Opacity (unified)
+- `alpha = 1.0`: Base opacity per component (ribbons, arcs, labels). Accepts `Real`, `Tuple`, or `ComponentAlpha`. Scaling off = fixed opacity; scaling on = upper bound (min_alpha to this).
+- `alpha_by_value = false`: Value-based scaling. Accepts `Bool` or `ValueScaling`. This is the **only** toggle for “scale by value” vs “fully opaque”:
+  - For each component (ribbons, arcs, labels), **on** → opacity scales by value from `min_alpha` to the component’s base `alpha`; **off** → opacity is that component base alpha (fixed).
+  - `false` or unknown → no scaling (all components 1.0). `true` → all components scaled. `ValueScaling(; components=(ribbons=..., arcs=..., labels=...))` → per-component.
 
 ## Focus (highlight subset)
 - `focus_group = nothing`: Group to apply focus styling
@@ -181,10 +173,10 @@ fig, ax, plt = chordplot(cooc)
 # Per-component opacity
 chordplot(cooc; alpha=ComponentAlpha(ribbons=0.5, arcs=1.0, labels=1.0))
 
-# Value-based scaling (ribbons and arcs only)
+# Value-based scaling (ribbons and arcs only; labels at 1.0)
 chordplot(cooc; alpha_by_value=ValueScaling(
     enabled=true,
-    components=(true, true, false)
+    components=(ribbons=true, arcs=true, labels=false)
 ))
 ```
 """
@@ -218,8 +210,8 @@ chordplot(cooc; alpha_by_value=ValueScaling(
         colorscheme = :group,
         # Opacity (Real, Tuple, or ComponentAlpha)
         alpha = 1.0,
-        # Value-based scaling (Bool or ValueScaling)
-        alpha_by_value = false,
+        # Value-based scaling (Bool or ValueScaling). Default ValueScaling(false) so user's ValueScaling is stored (not converted to Bool).
+        alpha_by_value = ValueScaling(false),
         # Focus
         focus_group = nothing,
         focus_labels = nothing,
@@ -367,14 +359,17 @@ function Makie.plot!(p::ChordPlotType)
     end
     
     # Consolidate drawing configuration into single struct
+    # ValueScaling: on = scale by value (min_alpha .. base alpha), off = use base alpha (fixed).
+    # Bool false / unknown → no scaling (each component uses its base alpha). Bool true → all scaled. ValueScaling → use as-is.
     draw_config_obs = lift(p.alpha, p.alpha_by_value, p.dim_color, p.dim_alpha) do alpha, scaling, dim_color, dim_alpha
         ca = parse_alpha(alpha)
         vs = if scaling isa ValueScaling
             scaling
-        elseif scaling isa Bool
-            ValueScaling(scaling)
+        elseif scaling === true
+            ValueScaling(true)
         else
-            ValueScaling(false)
+            # false, nothing, or unknown: no scaling for any component (all opaque)
+            ValueScaling(false, false, false, false, 0.1, :linear)
         end
         DrawConfig(ca, vs, RGB{Float64}(dim_color), Float64(dim_alpha))
     end
@@ -421,11 +416,12 @@ function draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, 
                 color = RGBA(cfg.dim_color, cfg.dim_alpha)
             else
                 base_color = resolve_ribbon_color(cs, ribbon, cooc)
-                alpha = if normalizer !== nothing
+                # Toggle off → fixed base alpha; on → scaled by value (or base alpha if no normalizer)
+                alpha = if !cfg.scaling.ribbons
+                    cfg.alpha.ribbons
+                elseif normalizer !== nothing
                     compute_scaled_alpha(normalizer, ribbon.value, 
                                          cfg.alpha.ribbons, cfg.scaling.min_alpha)
-                elseif cfg.scaling.enabled && !cfg.scaling.ribbons
-                    1.0  # excluded from scaling = fully opaque
                 else
                     cfg.alpha.ribbons
                 end
@@ -476,11 +472,12 @@ function draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dim
                 color = RGBA(cfg.dim_color, cfg.dim_alpha)
             else
                 base_color = resolve_arc_color(cs, arc, cooc)
-                alpha = if normalizer !== nothing
+                # Toggle off → fixed base alpha; on → scaled by value (or base alpha if no normalizer)
+                alpha = if !cfg.scaling.arcs
+                    cfg.alpha.arcs
+                elseif normalizer !== nothing
                     compute_scaled_alpha(normalizer, arc.value, 
                                          cfg.alpha.arcs, cfg.scaling.min_alpha)
-                elseif cfg.scaling.enabled && !cfg.scaling.arcs
-                    1.0  # excluded from scaling = fully opaque
                 else
                     cfg.alpha.arcs
                 end
@@ -531,6 +528,9 @@ function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, d
         
         dimmed_color = RGBA(cfg.dim_color, cfg.dim_alpha)
         use_group_color = label_color === :group
+        # For labels, :group always means group identity colors (V, D, etc.), not the
+        # current colorscheme (which may be diverging/gradient and give near-white for small values).
+        group_cs = use_group_color ? group_colors(cooc) : nothing
 
         for arc in layout.arcs
             lp = label_position(arc, layout.outer_radius, offset; rotate=rotate, justify=justify)
@@ -543,12 +543,12 @@ function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, d
             if arc.label_idx in dimmed
                 push!(colors, dimmed_color)
             else
-                base_color = use_group_color ? resolve_arc_color(cs, arc, cooc) : Makie.to_color(label_color)
-                alpha = if normalizer !== nothing
-                    compute_scaled_alpha(normalizer, arc.value, 
-                                         cfg.alpha.labels, cfg.scaling.min_alpha)
-                elseif cfg.scaling.enabled && !cfg.scaling.labels
-                    1.0  # excluded from scaling = fully opaque
+                base_color = use_group_color ? resolve_arc_color(group_cs, arc, cooc) : Makie.to_color(label_color)
+                # Toggle off → fixed base alpha; on → scaled from min_alpha to cfg.alpha.labels
+                alpha = if !cfg.scaling.labels
+                    cfg.alpha.labels
+                elseif normalizer !== nothing
+                    compute_scaled_alpha(normalizer, arc.value, cfg.alpha.labels, cfg.scaling.min_alpha)
                 else
                     cfg.alpha.labels
                 end

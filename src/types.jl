@@ -335,32 +335,37 @@ ComponentAlpha(; ribbons::Real=1.0, arcs::Real=1.0, labels::Real=1.0) =
 """
     ValueScaling
 
-Configuration for value-based opacity scaling. When enabled, component opacity
-scales from `min_alpha` (weakest) to the component's base alpha (strongest).
+Value-based opacity scaling. Each of ribbons, arcs, and labels is a **toggle**:
+- **On** (true): opacity is scaled by value from `min_alpha` (weakest) to the component's base alpha from `alpha` (strongest).
+- **Off** (false): opacity is the component's **base alpha** from `alpha` (fixed; no scaling). Use `alpha=ComponentAlpha(ribbons=0.6, arcs=0.8, labels=1)` for fixed per-component opacity when not scaling.
 
 # Fields
-- `enabled::Bool`: Whether scaling is active
-- `ribbons::Bool`: Scale ribbon opacity by co-occurrence value
-- `arcs::Bool`: Scale arc opacity by total flow
-- `labels::Bool`: Scale label opacity by total flow
-- `min_alpha::Float64`: Minimum opacity for weakest values
-- `scale::Symbol`: `:linear` or `:log` scaling
+- `enabled::Bool`: Master switch; when false, no component is scaled.
+- `ribbons::Bool`: Toggle ribbon opacity by co-occurrence value.
+- `arcs::Bool`: Toggle arc opacity by total flow.
+- `labels::Bool`: Toggle label opacity by total flow.
+- `min_alpha::Float64`: Minimum opacity when scaling (used only for components that are on).
+- `scale::Symbol`: `:linear` or `:log` scaling.
 
-# Constructors
-- `ValueScaling(; enabled, components, min_alpha, scale)`: Full control
-- `ValueScaling(enabled::Bool)`: Quick on/off with defaults
+# Components argument
+`components` can be given as:
+- **Named tuple** (recommended): `(ribbons=true, arcs=true, labels=false)` — order and meaning are clear.
+- **Positional tuple**: `(ribbons, arcs, labels)` i.e. `(true, true, false)` in that order.
 
-# Example
+# Examples
 ```julia
-# Scale all components by value
+# Scale all three by value
 chordplot(cooc; alpha_by_value=ValueScaling(enabled=true))
 
-# Scale ribbons and arcs, keep labels solid
+# Scale ribbons and arcs only; labels fully opaque
 chordplot(cooc; alpha_by_value=ValueScaling(
-    enabled=true, 
-    components=(true, true, false),
+    enabled=true,
+    components=(ribbons=true, arcs=true, labels=false),
     min_alpha=0.2
 ))
+
+# Only ribbons scaled; arcs and labels at 1.0
+chordplot(cooc; alpha_by_value=ValueScaling(enabled=true, components=(ribbons=true, arcs=false, labels=false)))
 ```
 """
 struct ValueScaling
@@ -378,15 +383,37 @@ struct ValueScaling
     end
 end
 
+# Normalize components to (ribbons, arcs, labels); accept named or positional tuple
+function _components_tuple(c)
+    if c isa NamedTuple
+        haskey(c, :ribbons) && haskey(c, :arcs) && haskey(c, :labels) ||
+            throw(ArgumentError("components as NamedTuple must have keys :ribbons, :arcs, :labels"))
+        return (c.ribbons, c.arcs, c.labels)
+    elseif c isa Tuple && length(c) == 3
+        return (Bool(c[1]), Bool(c[2]), Bool(c[3]))
+    else
+        throw(ArgumentError("components must be (ribbons, arcs, labels) or (ribbons=..., arcs=..., labels=...)"))
+    end
+end
+
 # Convenience constructors
 function ValueScaling(;
     enabled::Bool = false,
-    components::NTuple{3, Bool} = (true, true, true),
+    components = (true, true, true),
     min_alpha::Real = 0.1,
     scale::Symbol = :linear
 )
-    ValueScaling(enabled, components[1], components[2], components[3], min_alpha, scale)
+    r, a, l = _components_tuple(components)
+    ValueScaling(enabled, r, a, l, min_alpha, scale)
 end
 
-ValueScaling(enabled::Bool) = ValueScaling(enabled=enabled)
+# When enabled=false, no component is scaled (all get 1.0). When enabled=true, scale all by default.
+ValueScaling(enabled::Bool) = ValueScaling(
+    enabled,
+    enabled,  # ribbons
+    enabled,  # arcs
+    enabled,  # labels
+    0.1,
+    :linear
+)
 
