@@ -46,7 +46,7 @@ function ValueNormalizer(values::AbstractVector{<:Real}, use_log::Bool)
 end
 
 """
-Normalize a value to [0, 1] range using the normalizer's configuration.
+Map a value to the [0, 1] range for visual scaling.
 """
 function normalize_value(n::ValueNormalizer, value::Real)::Float64
     # When range is 0, return 0 so alpha = min_alpha (so min_alpha is always respected)
@@ -161,14 +161,14 @@ Create a chord diagram from co-occurrence data.
 
 # Example
 ```julia
-using CairoMakie, ChordPlots, DataFrames
+using CairoMakie, ChordPlots
 
-df = DataFrame(
-    V_call = ["V1", "V1", "V2", "V2", "V3"],
-    D_call = ["D1", "D2", "D1", "D2", "D1"],
-    J_call = ["J1", "J1", "J2", "J2", "J1"]
-)
-cooc = cooccurrence_matrix(df, [:V_call, :D_call, :J_call])
+matrix = [0 3 1;
+          3 0 2;
+          1 2 0]
+labels = ["A", "B", "C"]
+groups = [GroupInfo{String}(:G, labels, 1:3)]
+cooc = CoOccurrenceMatrix(matrix, labels, groups)
 
 # Basic plot
 fig, ax, plt = chordplot(cooc)
@@ -305,11 +305,7 @@ function Makie.plot!(p::ChordPlotType)
                     end
                 end
                 
-                if cooc isa NormalizedCoOccurrenceMatrix
-                    return NormalizedCoOccurrenceMatrix(new_matrix, new_labels, new_groups; check_sum=false)
-                else
-                    return CoOccurrenceMatrix{T, S}(new_matrix, new_labels, new_groups)
-                end
+                return CoOccurrenceMatrix{T, S}(new_matrix, new_labels, new_groups)
             end
         end
         cooc
@@ -574,25 +570,6 @@ function draw_labels!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, d
           fontsize = p.label_fontsize,
           color = colors_obs,
           align = (:center, :center))
-end
-
-#==============================================================================#
-# Convenience Functions
-#==============================================================================#
-
-"""
-    chordplot(df::DataFrame, columns; kwargs...)
-
-Create chord plot directly from DataFrame.
-"""
-function chordplot(df::DataFrame, columns::Vector{Symbol}; kwargs...)
-    cooc = cooccurrence_matrix(df, columns)
-    chordplot(cooc; kwargs...)
-end
-
-function chordplot!(ax, df::DataFrame, columns::Vector{Symbol}; kwargs...)
-    cooc = cooccurrence_matrix(df, columns)
-    chordplot!(ax, cooc; kwargs...)
 end
 
 #==============================================================================#

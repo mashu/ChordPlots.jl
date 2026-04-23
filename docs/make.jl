@@ -12,7 +12,6 @@ Pkg.instantiate()
 using Documenter
 using ChordPlots
 using CairoMakie
-using DataFrames
 using Random
 
 # Set up for headless plotting

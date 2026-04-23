@@ -3,17 +3,21 @@
 A simple example showing how to create a chord diagram.
 
 ```julia
-using CairoMakie, ChordPlots, DataFrames
+using CairoMakie, ChordPlots
 
-# Create sample data
-df = DataFrame(
-    V = ["V1", "V1", "V2", "V2", "V3"],
-    D = ["D1", "D2", "D1", "D2", "D1"],
-    J = ["J1", "J1", "J2", "J2", "J1"]
-)
-
-# Create co-occurrence matrix
-cooc = cooccurrence_matrix(df, [:V, :D, :J])
+matrix = [0 6 2 0 0 0;
+          6 0 3 0 0 0;
+          2 3 0 0 0 0;
+          0 0 0 0 4 1;
+          0 0 0 4 0 5;
+          0 0 0 1 5 0]
+labels = ["V1", "V2", "V3", "D1", "D2", "J1"]
+groups = [
+    GroupInfo{String}(:V, ["V1", "V2", "V3"], 1:3),
+    GroupInfo{String}(:D, ["D1", "D2"], 4:5),
+    GroupInfo{String}(:J, ["J1"], 6:6),
+]
+cooc = CoOccurrenceMatrix(matrix, labels, groups)
 
 # Create plot
 fig = Figure(size=(800, 800))

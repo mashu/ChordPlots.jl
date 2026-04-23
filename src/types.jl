@@ -4,11 +4,10 @@
 """
     AbstractChordData
 
-Abstract supertype for chord data (co-occurrence or normalized/frequency).
+Abstract supertype for chord data.
 
 All subtypes must have fields: `matrix`, `labels`, `groups`, `label_to_index`.
-Use [`CoOccurrenceMatrix`](@ref) for raw counts; use [`NormalizedCoOccurrenceMatrix`](@ref)
-for frequencies or combined data (e.g. mean of normalized matrices from multiple sources).
+Use [`CoOccurrenceMatrix`](@ref) for user-supplied weights (counts, frequencies, scores, etc.).
 """
 abstract type AbstractChordData end
 
@@ -59,7 +58,7 @@ Stores co-occurrence counts between labels with group information.
 - `S`: String type for labels
 
 # Fields
-- `matrix::Matrix{T}`: Symmetric co-occurrence matrix (counts, frequencies, or e.g. mean normalized counts)
+- `matrix::AbstractMatrix{T}`: Symmetric weight matrix (dense or sparse; counts, frequencies, scores, etc.)
 - `labels::Vector{S}`: Combined list of all labels
 - `groups::Vector{GroupInfo{S}}`: Group information
 - `label_to_index::Dict{S, Int}`: Fast label lookup
@@ -70,86 +69,38 @@ cooc = CoOccurrenceMatrix(df, [:V_call, :D_call, :J_call])
 cooc["IGHV1-2*01", "IGHD2-2*01"]  # Get co-occurrence count
 ```
 """
-struct CoOccurrenceMatrix{T<:Real, S<:AbstractString} <: AbstractChordData
-    matrix::Matrix{T}
+struct CoOccurrenceMatrix{T<:Real, S<:AbstractString, M<:AbstractMatrix{T}} <: AbstractChordData
+    matrix::M
     labels::Vector{S}
     groups::Vector{GroupInfo{S}}
     label_to_index::Dict{S, Int}
     
     function CoOccurrenceMatrix{T, S}(
-        matrix::Matrix{T},
+        matrix::M,
         labels::Vector{S},
         groups::Vector{GroupInfo{S}}
-    ) where {T<:Real, S<:AbstractString}
+    ) where {T<:Real, S<:AbstractString, M<:AbstractMatrix{T}}
         n = length(labels)
         size(matrix) == (n, n) || throw(DimensionMismatch(
             "Matrix size $(size(matrix)) doesn't match label count $n"
         ))
         
         label_to_index = Dict{S, Int}(l => i for (i, l) in enumerate(labels))
-        new{T, S}(matrix, labels, groups, label_to_index)
+        new{T, S, M}(matrix, labels, groups, label_to_index)
     end
 end
 
 # Convenience constructor with type inference
 function CoOccurrenceMatrix(
-    matrix::Matrix{T},
+    matrix::M,
     labels::Vector{S},
     groups::Vector{GroupInfo{S}}
-) where {T<:Real, S<:AbstractString}
+) where {T<:Real, S<:AbstractString, M<:AbstractMatrix{T}}
     CoOccurrenceMatrix{T, S}(matrix, labels, groups)
 end
 
 #------------------------------------------------------------------------------
-# NormalizedCoOccurrenceMatrix: frequencies or mean of normalized matrices
-#------------------------------------------------------------------------------
-
-"""
-    NormalizedCoOccurrenceMatrix{T<:Real, S<:AbstractString} <: AbstractChordData
-
-Co-occurrence data in frequency form (matrix typically sums to 1) or combined
-from multiple sources (e.g. mean of per-sample normalized matrices).
-
-Same structure as [`CoOccurrenceMatrix`](@ref); the type signals that values
-are on a 0–1 scale so e.g. `min_ribbon_value` / `min_arc_flow` can use small
-thresholds. Layout and plotting use the same logic (scale-invariant).
-"""
-struct NormalizedCoOccurrenceMatrix{T<:Real, S<:AbstractString} <: AbstractChordData
-    matrix::Matrix{T}
-    labels::Vector{S}
-    groups::Vector{GroupInfo{S}}
-    label_to_index::Dict{S, Int}
-    
-    function NormalizedCoOccurrenceMatrix{T, S}(
-        matrix::Matrix{T},
-        labels::Vector{S},
-        groups::Vector{GroupInfo{S}};
-        check_sum::Bool = true
-    ) where {T<:Real, S<:AbstractString}
-        n = length(labels)
-        size(matrix) == (n, n) || throw(DimensionMismatch(
-            "Matrix size $(size(matrix)) doesn't match label count $n"
-        ))
-        if check_sum
-            s = sum(matrix)
-            isfinite(s) && s > 0 && abs(s - 1) > 1e-6 && @warn "NormalizedCoOccurrenceMatrix: matrix sum is $s (expected ≈ 1)"
-        end
-        label_to_index = Dict{S, Int}(l => i for (i, l) in enumerate(labels))
-        new{T, S}(matrix, labels, groups, label_to_index)
-    end
-end
-
-function NormalizedCoOccurrenceMatrix(
-    matrix::Matrix{T},
-    labels::Vector{S},
-    groups::Vector{GroupInfo{S}};
-    check_sum::Bool = true
-) where {T<:Real, S<:AbstractString}
-    NormalizedCoOccurrenceMatrix{T, S}(matrix, labels, groups; check_sum)
-end
-
-#------------------------------------------------------------------------------
-# Shared accessors for AbstractChordData (CoOccurrenceMatrix + NormalizedCoOccurrenceMatrix)
+# Shared accessors for AbstractChordData
 #------------------------------------------------------------------------------
 
 Base.size(c::AbstractChordData) = size(c.matrix)

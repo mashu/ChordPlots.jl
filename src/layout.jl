@@ -1,6 +1,8 @@
 # src/layout.jl
 # Layout algorithms for chord diagrams
 
+using SparseArrays
+
 #==============================================================================#
 # Layout Computation
 #==============================================================================#
@@ -192,7 +194,7 @@ end
     compute_ribbon_endpoints(cooc, arcs, arc_positions, ribbon_width_power) -> Vector{Ribbon{Float64}}
 
 Compute ribbon endpoints. Ribbon width on each end is proportional to (value/flow)^power,
-normalized so each arc is fully used. Power > 1 makes thick ribbons thicker and thin ones thinner.
+scaled so each arc is fully used. Power > 1 makes thick ribbons thicker and thin ones thinner.
 """
 function compute_ribbon_endpoints(
     cooc::AbstractChordData,
@@ -202,67 +204,59 @@ function compute_ribbon_endpoints(
 )::Vector{Ribbon{Float64}}
     n = nlabels(cooc)
     power = Float64(ribbon_width_power)
+
+    pairs = upper_triangle_nonzero_pairs(cooc)
     
     # When power != 1, precompute per-arc sum of (|value|/flow)^power for normalization
     # Use absolute values for sizing (handles signed diff matrices)
     arc_sum_power = zeros(Float64, n)
     if power != 1.0
-        for i in 1:n
-            for j in (i+1):n
-                abs_value = abs(cooc[i, j])
-                if abs_value > 0
-                    src_flow = arcs[i].value
-                    tgt_flow = arcs[j].value
-                    src_flow > 0 && (arc_sum_power[i] += (abs_value / src_flow)^power)
-                    tgt_flow > 0 && (arc_sum_power[j] += (abs_value / tgt_flow)^power)
-                end
-            end
+        for (i, j, value) in pairs
+            abs_value = abs(value)
+            src_flow = arcs[i].value
+            tgt_flow = arcs[j].value
+            src_flow > 0 && (arc_sum_power[i] += (abs_value / src_flow)^power)
+            tgt_flow > 0 && (arc_sum_power[j] += (abs_value / tgt_flow)^power)
         end
     end
     
     positions = copy(arc_positions)
     ribbons = Ribbon{Float64}[]
     
-    for i in 1:n
-        for j in (i+1):n
-            value = cooc[i, j]
-            abs_value = abs(value)
-            # Include ribbons with non-zero absolute value (handles signed matrices)
-            if abs_value > 0
-                src_arc = arcs[i]
-                tgt_arc = arcs[j]
-                src_arc_span = arc_span(src_arc)
-                tgt_arc_span = arc_span(tgt_arc)
-                src_flow = src_arc.value
-                tgt_flow = tgt_arc.value
-                
-                # Use absolute value for width computation
-                if power == 1.0
-                    src_width = src_flow > 0 ? src_arc_span * (abs_value / src_flow) : 0.0
-                    tgt_width = tgt_flow > 0 ? tgt_arc_span * (abs_value / tgt_flow) : 0.0
-                else
-                    src_ratio = src_flow > 0 ? (abs_value / src_flow)^power : 0.0
-                    tgt_ratio = tgt_flow > 0 ? (abs_value / tgt_flow)^power : 0.0
-                    src_width = arc_sum_power[i] > 0 ? src_arc_span * src_ratio / arc_sum_power[i] : 0.0
-                    tgt_width = arc_sum_power[j] > 0 ? tgt_arc_span * tgt_ratio / arc_sum_power[j] : 0.0
-                end
-                
-                src_start = src_arc.start_angle + positions[i]
-                src_end = src_start + src_width
-                positions[i] += src_width
-                
-                tgt_start = tgt_arc.start_angle + positions[j]
-                tgt_end = tgt_start + tgt_width
-                positions[j] += tgt_width
-                
-                # Store original (possibly signed) value for coloring
-                push!(ribbons, Ribbon{Float64}(
-                    RibbonEndpoint{Float64}(i, src_start, src_end),
-                    RibbonEndpoint{Float64}(j, tgt_start, tgt_end),
-                    Float64(value)
-                ))
-            end
+    for (i, j, value) in pairs
+        abs_value = abs(value)
+        src_arc = arcs[i]
+        tgt_arc = arcs[j]
+        src_arc_span = arc_span(src_arc)
+        tgt_arc_span = arc_span(tgt_arc)
+        src_flow = src_arc.value
+        tgt_flow = tgt_arc.value
+        
+        # Use absolute value for width computation
+        if power == 1.0
+            src_width = src_flow > 0 ? src_arc_span * (abs_value / src_flow) : 0.0
+            tgt_width = tgt_flow > 0 ? tgt_arc_span * (abs_value / tgt_flow) : 0.0
+        else
+            src_ratio = src_flow > 0 ? (abs_value / src_flow)^power : 0.0
+            tgt_ratio = tgt_flow > 0 ? (abs_value / tgt_flow)^power : 0.0
+            src_width = arc_sum_power[i] > 0 ? src_arc_span * src_ratio / arc_sum_power[i] : 0.0
+            tgt_width = arc_sum_power[j] > 0 ? tgt_arc_span * tgt_ratio / arc_sum_power[j] : 0.0
         end
+        
+        src_start = src_arc.start_angle + positions[i]
+        src_end = src_start + src_width
+        positions[i] += src_width
+        
+        tgt_start = tgt_arc.start_angle + positions[j]
+        tgt_end = tgt_start + tgt_width
+        positions[j] += tgt_width
+        
+        # Store original (possibly signed) value for coloring
+        push!(ribbons, Ribbon{Float64}(
+            RibbonEndpoint{Float64}(i, src_start, src_end),
+            RibbonEndpoint{Float64}(j, tgt_start, tgt_end),
+            Float64(value)
+        ))
     end
     
     ribbons
@@ -271,6 +265,34 @@ end
 #==============================================================================#
 # Layout Utilities
 #==============================================================================#
+
+upper_triangle_nonzero_pairs(cooc::AbstractChordData) =
+    upper_triangle_nonzero_pairs(cooc.matrix, nlabels(cooc))
+
+function upper_triangle_nonzero_pairs(mat::SparseMatrixCSC, n::Int)
+    I, J, V = findnz(mat)
+    pairs = Tuple{Int, Int, Float64}[]
+    @inbounds for k in eachindex(V)
+        i = I[k]
+        j = J[k]
+        if i < j
+            v = Float64(V[k])
+            v != 0.0 && push!(pairs, (i, j, v))
+        end
+    end
+    pairs
+end
+
+function upper_triangle_nonzero_pairs(mat::AbstractMatrix, n::Int)
+    pairs = Tuple{Int, Int, Float64}[]
+    @inbounds for i in 1:n
+        for j in (i + 1):n
+            v = Float64(mat[i, j])
+            v != 0.0 && push!(pairs, (i, j, v))
+        end
+    end
+    pairs
+end
 
 """
     label_order(cooc::AbstractChordData; sort_by=:group, label_order=nothing)
@@ -329,9 +351,9 @@ to ensure consistent label positioning across plots.
 
 # Example
 ```julia
-# Two matrices with overlapping but different genes
-cooc_A = cooccurrence_matrix(df_A, [:V_call, :J_call])
-cooc_B = cooccurrence_matrix(df_B, [:V_call, :J_call])
+# Two matrices with overlapping but different label sets (user-preprocessed)
+cooc_A = CoOccurrenceMatrix(mat_A, labels_A, groups_A)
+cooc_B = CoOccurrenceMatrix(mat_B, labels_B, groups_B)
 
 # Get a combined order that works for both
 order = label_order([cooc_A, cooc_B])

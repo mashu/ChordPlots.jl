@@ -12,15 +12,14 @@ A Julia package for creating beautiful chord diagrams with Makie. Visualize co-o
 ## Quick Start
 
 ```julia
-using CairoMakie, ChordPlots, DataFrames
+using CairoMakie, ChordPlots
 
-df = DataFrame(
-    V = ["V1", "V1", "V2", "V2"],
-    D = ["D1", "D2", "D1", "D2"],
-    J = ["J1", "J1", "J2", "J2"]
-)
-
-cooc = cooccurrence_matrix(df, [:V, :D, :J])
+matrix = [0 3 1;
+          3 0 2;
+          1 2 0]
+labels = ["A", "B", "C"]
+groups = [GroupInfo{String}(:G, labels, 1:3)]
+cooc = CoOccurrenceMatrix(matrix, labels, groups)
 
 fig = Figure(size=(800, 800))
 ax = Axis(fig[1,1])

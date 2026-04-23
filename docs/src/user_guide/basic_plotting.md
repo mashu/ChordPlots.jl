@@ -37,16 +37,7 @@ Always call `setup_chord_axis!` after plotting to:
 setup_chord_axis!(ax; padding=0.2)  # padding controls margin around plot
 ```
 
-## Plotting from DataFrame
+## Providing Data
 
-You can plot directly from a DataFrame:
-
-```julia
-chordplot!(ax, df, [:V, :D, :J])
-```
-
-This is equivalent to:
-```julia
-cooc = cooccurrence_matrix(df, [:V, :D, :J])
-chordplot!(ax, cooc)
-```
+ChordPlots expects you to provide a `CoOccurrenceMatrix` (weights are user-defined: counts,
+frequencies, scores, etc.). The package does not perform data preprocessing.

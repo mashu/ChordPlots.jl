@@ -5,32 +5,19 @@ Compare two co-occurrence matrices to visualize what changed between conditions
 
 ## Signed Differences with Diverging Colors
 
-Use `diff()` to compute the difference between two matrices and `diff_colors()` (or 
+Provide a **signed** weight matrix (computed externally) and use `diff_colors()` (or
 `diverging_colors()`) to show increases vs decreases with a diverging colormap:
 
 ```julia
-using CairoMakie, ChordPlots, DataFrames
+using CairoMakie, ChordPlots
 
-# Two conditions: before and after some intervention
-df_before = DataFrame(
-    V = ["V1", "V1", "V1", "V2", "V2"],
-    D = ["D1", "D1", "D2", "D1", "D2"],
-    J = ["J1", "J2", "J1", "J1", "J2"]
-)
-
-df_after = DataFrame(
-    V = ["V1", "V2", "V2", "V2", "V2"],
-    D = ["D1", "D1", "D1", "D2", "D2"],
-    J = ["J1", "J1", "J2", "J1", "J2"]
-)
-
-cooc_before = cooccurrence_matrix(df_before, [:V, :D, :J])
-cooc_after = cooccurrence_matrix(df_after, [:V, :D, :J])
-
-# Compute difference: after - before
-# Positive values = connections that INCREASED
-# Negative values = connections that DECREASED
-d = diff(cooc_after, cooc_before)
+# Signed weights (example): positive = increased, negative = decreased
+matrix = [ 0.0  0.4 -0.1;
+           0.4  0.0  0.2;
+          -0.1  0.2  0.0 ]
+labels = ["A", "B", "C"]
+groups = [GroupInfo{String}(:G, labels, 1:3)]
+d = CoOccurrenceMatrix(matrix, labels, groups)
 
 # Plot with diverging colors: blue = decrease, red = increase
 fig, ax, plt = chordplot(d; colorscheme=diff_colors(d))
@@ -71,47 +58,28 @@ chordplot(d; colorscheme=cs)
 
 ## Absolute Differences
 
-If you only care about the **magnitude** of change (not direction), use `absolute=true`:
+If you only care about the **magnitude** of change (not direction), compute absolute
+values externally (e.g. `abs.(matrix)`):
 
 ```julia
-# All differences as positive values (magnitude only)
-d_abs = diff(cooc_after, cooc_before; absolute=true)
-
-# Use a sequential colormap like :Reds
+matrix_abs = abs.(matrix)
+d_abs = CoOccurrenceMatrix(matrix_abs, labels, groups)
 chordplot(d_abs; colorscheme=:Reds)
 ```
 
 ## Understanding the Direction
 
-The sign convention is `diff(a, b) = a - b`:
-
-| `diff(after, before)` | Meaning |
-|-----------------------|---------|
-| Positive values | Connection increased (`after > before`) |
-| Negative values | Connection decreased (`after < before`) |
-| Zero | No change |
-
-If you want the opposite interpretation (positive = decrease), swap the arguments:
-
-```julia
-# Positive = what was lost (before > after)
-d_loss = diff(cooc_before, cooc_after)
-```
+The sign convention is whatever you choose when preparing your signed weights.
 
 ## Combined Workflow
 
-A typical comparison workflow:
+A typical comparison workflow (all preprocessing external):
 
 ```julia
-using CairoMakie, ChordPlots, DataFrames
+using CairoMakie, ChordPlots
 
-# Load your data
-df_control = ...  # control/baseline condition
-df_treated = ...  # experimental condition
-
-# Build matrices
-cooc_control = cooccurrence_matrix(df_control, [:V, :D, :J])
-cooc_treated = cooccurrence_matrix(df_treated, [:V, :D, :J])
+cooc_control = CoOccurrenceMatrix(mat_control, labels, groups)
+cooc_treated = CoOccurrenceMatrix(mat_treated, labels, groups)
 
 # Create comparison figure
 fig = Figure(size=(1200, 500))
@@ -126,8 +94,8 @@ ax2 = Axis(fig[1,2], title="Treated")
 chordplot!(ax2, cooc_treated)
 setup_chord_axis!(ax2)
 
-# Difference (treated - control)
-d = diff(cooc_treated, cooc_control)
+# Difference (treated - control), computed externally as signed weights
+d = CoOccurrenceMatrix(mat_treated .- mat_control, labels, groups)
 ax3 = Axis(fig[1,3], title="Difference\n(Blue↓ Red↑)")
 chordplot!(ax3, d; colorscheme=diff_colors(d))
 setup_chord_axis!(ax3)
@@ -137,11 +105,5 @@ fig
 
 ## Notes
 
-- `diff()` normalizes both matrices before computing differences, so results are 
-  in frequency space (fractions, not raw counts)
-- Matrices can have different label sets; they are automatically aligned to the 
-  union of all labels
-- The result is a `NormalizedCoOccurrenceMatrix` (does not sum to 1 since it's a 
-  difference, not a probability distribution)
-- Arc widths in the difference plot are based on **absolute** difference magnitudes
-  (so both increases and decreases appear as thick ribbons if the change is large)
+- ChordPlots does not normalize or align datasets for you; decide on label sets and
+  any normalization in your preprocessing pipeline.

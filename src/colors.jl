@@ -248,14 +248,12 @@ end
 """
     diverging_colors(cooc::AbstractChordData; negative=:steelblue, neutral=:white, positive=:firebrick, symmetric=true)
 
-Create a diverging color scheme for signed values (e.g., from `diff()`).
+Create a diverging color scheme for signed values.
 
 Both ribbons and arcs are colored by their signed values:
 - **Ribbons**: colored by the connection's difference value
 - **Arcs**: colored by net flow (sum of all differences for that label), showing
   overall enrichment (positive → red) vs depletion (negative → blue)
-
-Use with `diff(a, b; absolute=false)` to visualize increases vs decreases.
 
 # Arguments
 - `cooc`: The chord data (used to determine value range)
@@ -266,8 +264,8 @@ Use with `diff(a, b; absolute=false)` to visualize increases vs decreases.
 
 # Example
 ```julia
-d = diff(cooc_after, cooc_before; absolute=false)  # positive = increase
-fig, ax, plt = chordplot(d; colorscheme=diverging_colors(d))
+# Provide a signed weight matrix (negative = decrease, positive = increase)
+fig, ax, plt = chordplot(cooc_signed; colorscheme=diverging_colors(cooc_signed))
 # Blue arcs = labels with overall decreased connections
 # Red arcs = labels with overall increased connections
 ```
@@ -330,8 +328,7 @@ Alias for `diverging_colors` - creates a color scheme for difference matrices.
 
 # Example
 ```julia
-d = diff(cooc_after, cooc_before; absolute=false)
-chordplot(d; colorscheme=diff_colors(d))
+chordplot(cooc_signed; colorscheme=diff_colors(cooc_signed))
 ```
 """
 diff_colors(cooc::AbstractChordData; kwargs...) = diverging_colors(cooc; kwargs...)

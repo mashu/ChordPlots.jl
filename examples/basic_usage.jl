@@ -5,36 +5,24 @@ using Pkg
 Pkg.activate("..")
 
 using ChordPlots
-using DataFrames
 using CairoMakie
 
-# Simulated VDJ gene segment data
-vdj_data = DataFrame(
-    V_call = [
-        "IGHV1-2*01", "IGHV1-2*01", "IGHV1-2*01",
-        "IGHV3-23*01", "IGHV3-23*01", "IGHV3-23*01", "IGHV3-23*01",
-        "IGHV4-34*01", "IGHV4-34*01",
-        "IGHV5-51*01", "IGHV5-51*01", "IGHV5-51*01",
-        "IGHV6-61*01", "IGHV6-61*01", "IGHV6-61*01"
-    ],
-    D_call = [
-        "IGHD2-2*01", "IGHD3-10*01", "IGHD2-2*01",
-        "IGHD2-2*01", "IGHD3-10*01", "IGHD1-1*01", "IGHD2-2*01",
-        "IGHD1-1*01", "IGHD3-10*01",
-        "IGHD2-2*01", "IGHD1-1*01", "IGHD3-10*01",
-        "IGHD2-2*01", "IGHD3-10*01", "IGHD1-1*01"
-    ],
-    J_call = [
-        "IGHJ6*01", "IGHJ4*02", "IGHJ6*01",
-        "IGHJ6*01", "IGHJ4*02", "IGHJ6*01", "IGHJ3*01",
-        "IGHJ6*01", "IGHJ4*02",
-        "IGHJ6*01", "IGHJ3*01", "IGHJ4*02",
-        "IGHJ6*01", "IGHJ4*02", "IGHJ6*01"
-    ]
-)
-
-# Create co-occurrence matrix
-cooc = cooccurrence_matrix(vdj_data, [:V_call, :D_call, :J_call])
+# Provide a preprocessed weight matrix (counts, frequencies, scores, etc.)
+matrix = [
+    0 6 2 0 0 0;
+    6 0 3 0 0 0;
+    2 3 0 0 0 0;
+    0 0 0 0 4 1;
+    0 0 0 4 0 5;
+    0 0 0 1 5 0;
+]
+labels = ["V1", "V2", "V3", "D1", "D2", "J1"]
+groups = [
+    GroupInfo{String}(:V, ["V1", "V2", "V3"], 1:3),
+    GroupInfo{String}(:D, ["D1", "D2"], 4:5),
+    GroupInfo{String}(:J, ["J1"], 6:6),
+]
+cooc = CoOccurrenceMatrix(matrix, labels, groups)
 
 println("  Labels: ", nlabels(cooc))
 println("  Groups: ", ngroups(cooc))

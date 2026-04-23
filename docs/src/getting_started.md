@@ -12,17 +12,15 @@ Pkg.add(url="https://github.com/mashu/ChordPlots.jl")
 ## Your First Chord Diagram
 
 ```julia
-using CairoMakie, ChordPlots, DataFrames
+using CairoMakie, ChordPlots
 
-# Create sample data
-df = DataFrame(
-    V = ["V1", "V1", "V2", "V2"],
-    D = ["D1", "D2", "D1", "D2"],
-    J = ["J1", "J1", "J2", "J2"]
-)
-
-# Create co-occurrence matrix
-cooc = cooccurrence_matrix(df, [:V, :D, :J])
+# Provide a preprocessed weight matrix (counts, frequencies, scores, etc.)
+matrix = [0 3 1;
+          3 0 2;
+          1 2 0]
+labels = ["A", "B", "C"]
+groups = [GroupInfo{String}(:G, labels, 1:3)]
+cooc = CoOccurrenceMatrix(matrix, labels, groups)
 
 # Create plot
 fig = Figure(size=(800, 800))
@@ -40,8 +38,8 @@ fig
 
 ## What Happens Here?
 
-1. **Data Preparation**: Each row in the DataFrame represents one observation with multiple categorical variables
-2. **Co-occurrence Matrix**: `cooccurrence_matrix` counts how often labels from different groups appear together
+1. **Data Preparation**: Prepare any weight matrix that represents relationships between labels
+2. **Weights**: compute counts/frequencies/scores externally (ChordPlots does not prescribe normalization)
 3. **Plotting**: `chordplot!` creates the visual representation
 4. **Setup**: `setup_chord_axis!` configures the axis for optimal display
 

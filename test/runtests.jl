@@ -1,7 +1,6 @@
 # test/runtests.jl
 using Test
 using ChordPlots
-using DataFrames
 using Colors
 
 @testset "ChordPlots.jl" begin
@@ -44,27 +43,6 @@ using Colors
     end
     
     @testset "CoOccurrenceMatrix Construction" begin
-        @testset "From DataFrame" begin
-            df = DataFrame(
-                A = ["a1", "a1", "a2", "a2"],
-                B = ["b1", "b2", "b1", "b2"],
-                C = ["c1", "c1", "c2", "c2"]
-            )
-            
-            cooc = cooccurrence_matrix(df, [:A, :B, :C])
-            
-            @test nlabels(cooc) == 6  # a1,a2 + b1,b2 + c1,c2
-            @test ngroups(cooc) == 3
-            
-            # Check groups
-            @test cooc.groups[1].name == :A
-            @test cooc.groups[2].name == :B
-            @test cooc.groups[3].name == :C
-            
-            # Check matrix is square
-            @test size(cooc) == (6, 6)
-        end
-        
         @testset "Direct construction" begin
             matrix = [4 2 1; 2 3 2; 1 2 2]
             labels = ["x", "y", "z"]
@@ -77,116 +55,22 @@ using Colors
             @test cooc[1, 2] == 2
             @test total_flow(cooc, 1) == sum(matrix[1, :])
         end
-        
-        @testset "Normalization" begin
-            df = DataFrame(A=["a", "a"], B=["b", "b"])
-            cooc = cooccurrence_matrix(df, [:A, :B])
-            norm_cooc = normalize(cooc)
-            @test norm_cooc isa ChordPlots.NormalizedCoOccurrenceMatrix
-            @test sum(norm_cooc.matrix) ≈ 1.0
-        end
-        
-        @testset "NormalizedCoOccurrenceMatrix and mean_normalized" begin
-            df = DataFrame(V=["V1", "V1", "V2"], D=["D1", "D2", "D1"], J=["J1", "J1", "J2"])
-            cooc = cooccurrence_matrix(df, [:V, :D, :J])
-            # Mean of same normalized matrix twice = same as normalize once
-            mean_norm = mean_normalized([cooc, cooc])
-            @test mean_norm isa ChordPlots.NormalizedCoOccurrenceMatrix
-            @test sum(mean_norm.matrix) ≈ 1.0
-            @test mean_norm.matrix ≈ normalize(cooc).matrix
-            layout = compute_layout(mean_norm)
-            @test narcs(layout) == nlabels(mean_norm)
-        end
-        
-        @testset "cooccurrence_values" begin
-            df = DataFrame(V=["V1", "V1", "V2"], D=["D1", "D2", "D1"], J=["J1", "J1", "J2"])
-            cooc = cooccurrence_matrix(df, [:V, :D, :J])
-            vals = ChordPlots.cooccurrence_values(cooc)
-            @test vals isa Vector{Float64}
-            @test length(vals) > 0
-            vals_multi = ChordPlots.cooccurrence_values([cooc, cooc])
-            @test length(vals_multi) == 2 * length(vals)
-        end
-        
-        @testset "mean_normalized with different labels per donor" begin
-            df1 = DataFrame(V=["V1", "V1"], D=["D1", "D2"], J=["J1", "J1"])
-            df2 = DataFrame(V=["V2", "V2"], D=["D1", "D1"], J=["J1", "J2"])
-            cooc1 = cooccurrence_matrix(df1, [:V, :D, :J])
-            cooc2 = cooccurrence_matrix(df2, [:V, :D, :J])
-            @test cooc1.labels != cooc2.labels
-            combined = mean_normalized([cooc1, cooc2])
-            @test combined isa ChordPlots.NormalizedCoOccurrenceMatrix
-            @test sum(combined.matrix) ≈ 1.0
-            @test length(combined.labels) == 6
-            @test "V1" in combined.labels && "V2" in combined.labels
-        end
-        
-        @testset "expand_labels" begin
-            df1 = DataFrame(V=["V1", "V1"], D=["D1", "D2"], J=["J1", "J1"])
-            df2 = DataFrame(V=["V2", "V2"], D=["D1", "D3"], J=["J1", "J2"])
-            cooc1 = cooccurrence_matrix(df1, [:V, :D, :J])
-            cooc2 = cooccurrence_matrix(df2, [:V, :D, :J])
-            
-            # Different labels initially
-            @test nlabels(cooc1) == 4  # V1, D1, D2, J1
-            @test nlabels(cooc2) == 5  # V2, D1, D3, J1, J2
-            
-            # After expansion, both have union of labels
-            exp1, exp2 = expand_labels(cooc1, cooc2)
-            @test nlabels(exp1) == 7  # V1, V2, D1, D2, D3, J1, J2
-            @test nlabels(exp2) == 7
-            @test exp1.labels == exp2.labels  # Same labels!
-            
-            # V2 has zero flow in exp1 (wasn't in cooc1)
-            v2_idx = exp1.label_to_index["V2"]
-            @test total_flow(exp1, v2_idx) == 0
-            
-            # V1 has zero flow in exp2 (wasn't in cooc2)
-            v1_idx = exp2.label_to_index["V1"]
-            @test total_flow(exp2, v1_idx) == 0
-            
-            # D1 has flow in both (was in both)
-            d1_idx = exp1.label_to_index["D1"]
-            @test total_flow(exp1, d1_idx) > 0
-            @test total_flow(exp2, d1_idx) > 0
-        end
-        
-        @testset "diff" begin
-            # Two matrices with some overlap
-            df1 = DataFrame(V=["V1", "V1", "V1", "V1"], D=["D1", "D1", "D2", "D2"], J=["J1", "J1", "J1", "J1"])
-            df2 = DataFrame(V=["V1", "V1"], D=["D1", "D2"], J=["J1", "J1"])
-            cooc1 = cooccurrence_matrix(df1, [:V, :D, :J])
-            cooc2 = cooccurrence_matrix(df2, [:V, :D, :J])
-            
-            # Absolute difference (default)
-            d = diff(cooc1, cooc2)
-            @test d isa ChordPlots.NormalizedCoOccurrenceMatrix
-            @test all(d.matrix .>= 0)  # All absolute values are non-negative
-            @test nlabels(d) == 4  # V1, D1, D2, J1
-            
-            # Signed difference
-            d_signed = diff(cooc1, cooc2; absolute=false)
-            # Some values might be negative (where cooc2 > cooc1 in normalized space)
-            # The matrices are normalized first, so differences depend on frequencies
-            @test d_signed isa ChordPlots.NormalizedCoOccurrenceMatrix
-            
-            # Diff with different labels
-            df3 = DataFrame(V=["V2", "V2"], D=["D1", "D1"], J=["J2", "J2"])
-            cooc3 = cooccurrence_matrix(df3, [:V, :D, :J])
-            d2 = diff(cooc1, cooc3)
-            # Should have union of labels from both
-            @test "V1" in d2.labels && "V2" in d2.labels
-            @test "J1" in d2.labels && "J2" in d2.labels
-        end
     end
     
     @testset "Layout Computation" begin
-        df = DataFrame(
-            V = ["V1", "V1", "V2"],
-            D = ["D1", "D2", "D1"],
-            J = ["J1", "J1", "J2"]
-        )
-        cooc = cooccurrence_matrix(df, [:V, :D, :J])
+        matrix = [0 3 1 0 0 0;
+                  3 0 2 0 0 0;
+                  1 2 0 0 0 0;
+                  0 0 0 0 2 1;
+                  0 0 0 2 0 3;
+                  0 0 0 1 3 0]
+        labels = ["V1", "V2", "V3", "D1", "D2", "J1"]
+        groups = [
+            GroupInfo{String}(:V, ["V1", "V2", "V3"], 1:3),
+            GroupInfo{String}(:D, ["D1", "D2"], 4:5),
+            GroupInfo{String}(:J, ["J1"], 6:6),
+        ]
+        cooc = CoOccurrenceMatrix(matrix, labels, groups)
         
         @testset "Default layout" begin
             layout = compute_layout(cooc)
@@ -240,11 +124,31 @@ using Colors
         end
         
         @testset "label_order() for multiple matrices" begin
-            # Two DataFrames with partially overlapping labels
-            df1 = DataFrame(V=["V1", "V1"], D=["D1", "D2"], J=["J1", "J1"])
-            df2 = DataFrame(V=["V2", "V2"], D=["D1", "D3"], J=["J1", "J2"])
-            cooc1 = cooccurrence_matrix(df1, [:V, :D, :J])
-            cooc2 = cooccurrence_matrix(df2, [:V, :D, :J])
+            # Two matrices with partially overlapping labels (user-preprocessed)
+            labels1 = ["V1", "D1", "D2", "J1"]
+            groups1 = [
+                GroupInfo{String}(:V, ["V1"], 1:1),
+                GroupInfo{String}(:D, ["D1", "D2"], 2:3),
+                GroupInfo{String}(:J, ["J1"], 4:4),
+            ]
+            mat1 = [0 2 1 0;
+                    2 0 1 3;
+                    1 1 0 1;
+                    0 3 1 0]
+            cooc1 = CoOccurrenceMatrix(mat1, labels1, groups1)
+
+            labels2 = ["V2", "D1", "D3", "J1", "J2"]
+            groups2 = [
+                GroupInfo{String}(:V, ["V2"], 1:1),
+                GroupInfo{String}(:D, ["D1", "D3"], 2:3),
+                GroupInfo{String}(:J, ["J1", "J2"], 4:5),
+            ]
+            mat2 = [0 1 0 0 0;
+                    1 0 2 1 1;
+                    0 2 0 0 1;
+                    0 1 0 0 3;
+                    0 1 1 3 0]
+            cooc2 = CoOccurrenceMatrix(mat2, labels2, groups2)
             
             # Should include union of all labels (V1, V2, D1, D2, D3, J1, J2)
             order_all = label_order(cooc1, cooc2)  # varargs
@@ -323,8 +227,16 @@ using Colors
     end
     
     @testset "Colors" begin
-        df = DataFrame(A=["a1", "a2"], B=["b1", "b2"])
-        cooc = cooccurrence_matrix(df, [:A, :B])
+        matrix = [0 2 1 0;
+                  2 0 0 3;
+                  1 0 0 1;
+                  0 3 1 0]
+        labels = ["a1", "a2", "b1", "b2"]
+        groups = [
+            GroupInfo{String}(:A, ["a1", "a2"], 1:2),
+            GroupInfo{String}(:B, ["b1", "b2"], 3:4),
+        ]
+        cooc = CoOccurrenceMatrix(matrix, labels, groups)
         
         @testset "Group colors" begin
             cs = group_colors(cooc)
@@ -360,16 +272,15 @@ using Colors
         end
         
         @testset "Diverging colors" begin
-            # Create two matrices with different patterns
-            df1 = DataFrame(V=["V1","V1"], D=["D1","D2"], J=["J1","J1"])
-            df2 = DataFrame(V=["V2","V2"], D=["D1","D1"], J=["J2","J2"])
-            cooc1 = cooccurrence_matrix(df1, [:V, :D, :J])
-            cooc2 = cooccurrence_matrix(df2, [:V, :D, :J])
-            
-            # Compute signed diff
-            d = diff(cooc2, cooc1)
-            @test any(x -> x < 0, d.matrix)  # Should have negative values
-            @test any(x -> x > 0, d.matrix)  # Should have positive values
+            # Signed matrix: user-preprocessed (negative/decrease, positive/increase)
+            matrix = [0.0  0.5 -0.2;
+                      0.5  0.0  0.1;
+                     -0.2  0.1  0.0]
+            labels = ["A", "B", "C"]
+            groups = [GroupInfo{String}(:G, labels, 1:3)]
+            d = CoOccurrenceMatrix(matrix, labels, groups)
+            @test any(x -> x < 0, d.matrix)
+            @test any(x -> x > 0, d.matrix)
             
             # Create diverging color scheme
             cs = diverging_colors(d)
@@ -408,23 +319,6 @@ using Colors
     end
     
     @testset "Edge Cases" begin
-        @testset "Single group" begin
-            df = DataFrame(A = ["a1", "a2", "a1"])
-            cooc = cooccurrence_matrix(df, [:A])
-            @test nlabels(cooc) == 2
-            @test ngroups(cooc) == 1
-        end
-        
-        @testset "Missing values" begin
-            df = DataFrame(
-                A = ["a1", missing, "a2"],
-                B = ["b1", "b1", missing]
-            )
-            cooc = cooccurrence_matrix(df, [:A, :B])
-            # Should handle missing gracefully
-            @test nlabels(cooc) >= 2
-        end
-        
         @testset "Empty co-occurrence" begin
             # Labels that never co-occur
             matrix = [1 0; 0 1]
@@ -440,8 +334,10 @@ using Colors
     end
     
     @testset "Type Stability" begin
-        df = DataFrame(A=["a"], B=["b"])
-        cooc = cooccurrence_matrix(df, [:A, :B])
+        matrix = [0 1; 1 0]
+        labels = ["a", "b"]
+        groups = [GroupInfo{String}(:G, labels, 1:2)]
+        cooc = CoOccurrenceMatrix(matrix, labels, groups)
         
         # These should not throw type instability warnings
         @inferred nlabels(cooc)

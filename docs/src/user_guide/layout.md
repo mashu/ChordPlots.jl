@@ -46,31 +46,13 @@ These settings work together to create a layout that emphasizes the most importa
 
 ## Consistent Ordering Across Multiple Plots
 
-When comparing chord diagrams from different data sources (e.g. different samples or donors), label order should be consistent so viewers can compare positions. There are two approaches:
-
-### Approach 1: `expand_labels` (show all labels, missing ones as empty arcs)
-
-Use `expand_labels` when you want **all labels to appear in both plots**, even if a label only exists in one matrix. Missing labels appear as empty arcs (zero flow, no ribbons).
+When comparing chord diagrams from different data sources, label order should be consistent so viewers can compare positions. Use `label_order` to compute a unified order across multiple matrices; then pass that order into each plot. Each plot will show its own labels, but shared labels will appear in consistent positions.
 
 ```julia
-# Two matrices with different genes
-cooc_A = cooccurrence_matrix(df_A, [:V_call, :J_call])
-cooc_B = cooccurrence_matrix(df_B, [:V_call, :J_call])
+# Two user-preprocessed matrices
+cooc_A = CoOccurrenceMatrix(mat_A, labels_A, groups_A)
+cooc_B = CoOccurrenceMatrix(mat_B, labels_B, groups_B)
 
-# Expand to union of labels (missing labels get zero flow → empty arcs)
-exp_A, exp_B = expand_labels(cooc_A, cooc_B)
-
-# Now both have the same labels; plot with consistent positions
-order = label_order(exp_A)  # or label_order(exp_B) — same labels
-chordplot!(ax1, exp_A; label_order = order)
-chordplot!(ax2, exp_B; label_order = order)
-```
-
-### Approach 2: `label_order` only (each plot shows only its own labels)
-
-Use `label_order` alone when you want each plot to show **only its own labels**, but with shared labels in consistent positions. Labels unique to one matrix won't appear in the other plot.
-
-```julia
 # Get a unified order (union of labels, sorted by combined flow)
 order = label_order(cooc_A, cooc_B)
 

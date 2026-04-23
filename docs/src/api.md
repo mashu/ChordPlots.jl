@@ -5,7 +5,6 @@ Complete reference for all exported functions and types.
 ## Main Functions
 
 ```@docs
-cooccurrence_matrix
 chordplot
 setup_chord_axis!
 compute_layout
@@ -16,28 +15,11 @@ compute_layout
 ```@docs
 AbstractChordData
 CoOccurrenceMatrix
-NormalizedCoOccurrenceMatrix
-```
-
-## Data Management
-
-```@docs
-filter_top_n
-filter_by_threshold
-normalize
-mean_normalized
-expand_labels
-```
-
-## Comparison
-
-```@docs
-Base.diff
 ```
 
 ## Data Exploration
 
-Inspect the distribution of co-occurrence values to choose thresholds (e.g. `min_ribbon_value`, `filter_by_threshold`):
+Inspect the distribution of values to choose thresholds (e.g. `min_ribbon_value`):
 
 ```@docs
 cooccurrence_values

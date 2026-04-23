@@ -10,11 +10,11 @@
 
 ChordPlots.jl is a Julia package for creating chord diagrams using the Makie plotting ecosystem. Chord diagrams visualize relationships between categorical variables, showing how different categories co-occur with each other.
 
-Chord plots accept two kinds of input data: **co-occurrence counts** (`CoOccurrenceMatrix`, e.g. from `cooccurrence_matrix(df, cols)`) or **normalized/frequency data** (`NormalizedCoOccurrenceMatrix`), e.g. when combining multiple donors by normalizing each matrix by its own total sum and taking the element-wise mean (`mean_normalized`). Both types work with `chordplot` and the rest of the API.
+Chord plots accept **user-preprocessed weights** as a `CoOccurrenceMatrix`. ChordPlots does not assume how your data is normalized (or normalized at all) — it simply visualizes the relationships implied by the values you provide.
 
 ## Features
 
-- **Simple API** - Create chord diagrams from DataFrames
+- **Simple API** - Create chord diagrams from your own matrices
 - **Modern colors** - Professional color schemes (Wong palette, same as AlgebraOfGraphics)
 - **Flexible filtering** - Filter by value, top N, or minimum flow
 - **Customizable** - Control layout, colors, labels, and styling
@@ -23,15 +23,14 @@ Chord plots accept two kinds of input data: **co-occurrence counts** (`CoOccurre
 ## Quick Start
 
 ```julia
-using CairoMakie, ChordPlots, DataFrames
+using CairoMakie, ChordPlots
 
-df = DataFrame(
-    V = ["V1", "V1", "V2", "V2"],
-    D = ["D1", "D2", "D1", "D2"],
-    J = ["J1", "J1", "J2", "J2"]
-)
-
-cooc = cooccurrence_matrix(df, [:V, :D, :J])
+matrix = [0 3 1;
+          3 0 2;
+          1 2 0]
+labels = ["A", "B", "C"]
+groups = [GroupInfo{String}(:G, labels, 1:3)]
+cooc = CoOccurrenceMatrix(matrix, labels, groups)
 
 fig = Figure(size=(800, 800))
 ax = Axis(fig[1,1])
@@ -56,7 +55,7 @@ This is the default chord diagram with standard settings. Labels are arranged ar
 
 ### Filtered Data
 
-This example demonstrates data filtering using `filter_top_n()`, which keeps only the top 8 labels by total flow (sum of all connections). The original dataset contained many more labels (A1-A8, B1-B5, C1-C4), but filtering reduces it to only the most connected labels. This is particularly useful when working with large datasets where you want to focus on the most important relationships and reduce visual clutter from many small, weaker connections.
+This example demonstrates decluttering by increasing `min_arc_flow`, which hides arcs (and labels) whose total flow is below a threshold. This is useful for large datasets where many labels have only weak connections.
 
 **What this shows:**
 - Only top 8 labels by total flow are displayed (out of many more in the original data)
