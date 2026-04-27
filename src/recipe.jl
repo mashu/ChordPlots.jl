@@ -218,7 +218,13 @@ chordplot(cooc; alpha_by_value=ValueScaling(
         # CoOccurrenceLayers: how to anchor per-donor slices along arcs
         # - :fixed_pairs (default): each label-pair gets a fixed arc sub-span from the aggregate; donors vary within it
         # - :per_layer: each donor independently partitions the arc (previous behavior)
+        # - :stack_layers: each label-pair gets a fixed span from the aggregate; donors partition that span (true stacked decomposition)
         layers_pair_span = :fixed_pairs,
+        # CoOccurrenceLayers (only for :stack_layers): how to order donor slices within a pair
+        # - :given: layer index order (1..L)
+        # - :value_desc: largest |value| first
+        # - :value_asc: smallest |value| first
+        layers_stack_order = :given,
         # Arcs
         arc_strokewidth = 0.5,
         arc_strokecolor = :black,
@@ -402,7 +408,18 @@ function Makie.plot!(p::ChordPlotType)
     end
     
     # Reactive computations
-    layout_obs = lift(filtered_cooc_obs, p.inner_radius, p.outer_radius, p.gap_fraction, p.sort_by, resolved_order_obs, p.arc_scale, p.ribbon_width_power) do cooc, ir, or, gf, sb, order, arc_scale, ribbon_power
+    layout_obs = lift(
+        filtered_cooc_obs,
+        p.inner_radius,
+        p.outer_radius,
+        p.gap_fraction,
+        p.sort_by,
+        resolved_order_obs,
+        p.arc_scale,
+        p.ribbon_width_power,
+        p.layers_pair_span,
+        p.layers_stack_order,
+    ) do cooc, ir, or, gf, sb, order, arc_scale, ribbon_power, layers_pair_span, layers_stack_order
         config = LayoutConfig(
             inner_radius = ir,
             outer_radius = or,
@@ -410,7 +427,9 @@ function Makie.plot!(p::ChordPlotType)
             sort_by = sb,
             label_order = order,
             arc_scale = arc_scale,
-            ribbon_width_power = ribbon_power
+            ribbon_width_power = ribbon_power,
+            layers_pair_span = layers_pair_span,
+            layers_stack_order = layers_stack_order,
         )
         compute_layout(cooc, config)
     end

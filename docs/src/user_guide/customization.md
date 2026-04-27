@@ -31,6 +31,17 @@ chordplot!(ax, cooc;
 )
 ```
 
+## Co-occurrence layers (per donor)
+
+For `CoOccurrenceLayers`, you can control how per-donor ribbons share arc space:
+
+```julia
+chordplot!(ax, cooc_layers;
+    layers_pair_span = :stack_layers,   # :per_layer | :fixed_pairs | :stack_layers
+    layers_stack_order = :given,        # :given | :value_desc | :value_asc (stacked only)
+)
+```
+
 ## Opacity Control
 
 Use **`alpha`** to control opacity. It accepts:

@@ -258,8 +258,8 @@ for ℓ in 1:L
     add_link!(layers_u, l2u, "IGHV2-8", "IGHJ6", 0.07, 0.06, ℓ, rng)
 end
 
-# Arcs from aggregate (mean donor), ribbons from individual donors
-cooc_layers = CoOccurrenceLayers(layers_u, labels_u, groups_u; aggregate = :mean)
+# Arcs from aggregate (sum across donors), ribbons from individual donors
+cooc_layers = CoOccurrenceLayers(layers_u, labels_u, groups_u; aggregate = :sum)
 cs_ld = group_colors(cooc_layers)
 
 fig = Figure(size = (780, 780))
@@ -280,7 +280,8 @@ chordplot!(
         min_alpha = 0.02,
     ),
     alpha = ComponentAlpha(ribbons = 0.2, arcs = 0.95, labels = 1.0),
-    layers_pair_span = :fixed_pairs,
+    layers_pair_span = :stack_layers,
+    layers_stack_order = :given,
     arc_strokewidth = 0.0,
     arc_strokecolor = :transparent,
     label_color = :black,

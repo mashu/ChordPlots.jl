@@ -24,11 +24,14 @@ cooc = CoOccurrenceMatrix(matrix, labels, groups)
 ## Several layers (e.g. one matrix per donor)
 
 If each observation (donor, batch, etc.) has its own `n×n` matrix in a **common value range**,
-pack them as `layers[i, j, ℓ]`. The layout allocates a **bundle** for each pair from the sum of
-**absolute** values, then **splits** the bundle: each layer’s segment width is proportional to its
-share of that sum, so per-donor **thickness** encodes |value| (e.g. link strengths differ slightly
-between donors). Ribbons are drawn in order; use **translucent** ribbon `alpha` to stack or opaque
-to read each slice. Lower `alpha` also helps if you draw **repeated** ribbons on the same path (see example docs).
+pack them as `layers[i, j, ℓ]`.
+
+For visualization you can choose how per-donor ribbons attach to arcs:
+- `layers_pair_span = :per_layer`: each donor independently partitions each arc (pair endpoints may shift)
+- `layers_pair_span = :fixed_pairs`: each pair gets a fixed arc segment from the aggregate; donors draw within it
+- `layers_pair_span = :stack_layers`: each pair gets a fixed arc segment and donors **partition** it (true stacked decomposition)
+
+Use **translucent** ribbon `alpha` (or `alpha_by_value`) when drawing many donors so overlap remains readable.
 
 ```julia
 layers = cat([0.0 0.3; 0.0 0.0], [0.0 0.2; 0.0 0.0]; dims=3)  # 2×2×2, upper triangle only

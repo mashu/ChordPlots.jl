@@ -44,6 +44,7 @@ struct LayoutConfig{T<:Real}
     arc_scale::T
     ribbon_width_power::T
     layers_pair_span::Symbol
+    layers_stack_order::Symbol
 end
 
 # Default constructor with Float64 type (kwargs grouped; struct field order unchanged)
@@ -64,7 +65,9 @@ function LayoutConfig(;
     ribbon_width_power::Real = 1.0,
     # CoOccurrenceLayers: anchor per-donor slices to fixed pair spans (:fixed_pairs) or
     # let each layer partition arc independently (:per_layer; legacy)
-    layers_pair_span::Symbol = :fixed_pairs
+    layers_pair_span::Symbol = :fixed_pairs,
+    # CoOccurrenceLayers only (when layers_pair_span = :stack_layers): order donor slices in each pair
+    layers_stack_order::Symbol = :given
 )
     LayoutConfig{Float64}(
         Float64(inner_radius),
@@ -76,7 +79,8 @@ function LayoutConfig(;
         label_order,
         Float64(arc_scale),
         Float64(ribbon_width_power),
-        layers_pair_span
+        layers_pair_span,
+        layers_stack_order
     )
 end
 
@@ -143,7 +147,14 @@ function compute_layout(
     end
     
     # Compute ribbon positions
-    ribbons = compute_ribbon_endpoints(cooc, arcs, arc_angle_positions, config.ribbon_width_power, config.layers_pair_span)
+    ribbons = compute_ribbon_endpoints(
+        cooc,
+        arcs,
+        arc_angle_positions,
+        config.ribbon_width_power,
+        config.layers_pair_span,
+        config.layers_stack_order,
+    )
     
     ChordLayout{Float64}(
         arcs,
@@ -206,9 +217,10 @@ function compute_ribbon_endpoints(
     arcs::Vector{ArcSegment{Float64}},
     arc_positions::Vector{Float64},
     ribbon_width_power::Real = 1.0,
-    layers_pair_span::Symbol = :fixed_pairs
+    layers_pair_span::Symbol = :fixed_pairs,
+    layers_stack_order::Symbol = :given
 )::Vector{Ribbon{Float64}}
-    # layers_pair_span is ignored for non-layer data
+    # layers_pair_span / layers_stack_order are ignored for non-layer data
     n = nlabels(cooc)
     power = Float64(ribbon_width_power)
 
@@ -274,7 +286,8 @@ function compute_ribbon_endpoints(
     arcs::Vector{ArcSegment{Float64}},
     arc_positions::Vector{Float64},
     ribbon_width_power::Real = 1.0,
-    layers_pair_span::Symbol = :fixed_pairs
+    layers_pair_span::Symbol = :fixed_pairs,
+    layers_stack_order::Symbol = :given
 )::Vector{Ribbon{Float64}}
     n, _, nL = size(cooc.layers)
     power = Float64(ribbon_width_power)
@@ -337,8 +350,8 @@ function compute_ribbon_endpoints(
         return ribbons
     end
 
-    # Default: :fixed_pairs
-    layers_pair_span === :fixed_pairs || throw(ArgumentError("layers_pair_span must be :fixed_pairs or :per_layer, got $layers_pair_span"))
+    (layers_pair_span === :fixed_pairs || layers_pair_span === :stack_layers) ||
+        throw(ArgumentError("layers_pair_span must be :fixed_pairs, :stack_layers, or :per_layer, got $layers_pair_span"))
 
     # Precompute a fixed arc sub-span for each label pair from the aggregate matrix.
     agg_pairs = upper_triangle_nonzero_pairs(cooc.matrix, n)
@@ -354,8 +367,10 @@ function compute_ribbon_endpoints(
     end
 
     fixed_pos = copy(arc_positions)
-    fixed_segments = Dict{Tuple{Int,Int}, Tuple{Float64,Float64,Float64,Float64,Float64,Float64}}()
-    # (i,j) => (src_start, src_width, tgt_start, tgt_width, agg_abs, dummy)
+    # Keep a deterministic pair order (same as aggregate pair traversal) and a lookup table.
+    fixed_pair_order = Tuple{Int, Int}[]
+    fixed_segments = Dict{Tuple{Int,Int}, Tuple{Float64,Float64,Float64,Float64,Float64}}()
+    # (i,j) => (src_start, src_width, tgt_start, tgt_width, agg_abs)
     for (i, j, value) in agg_pairs
         agg_abs = abs(value)
         src_arc = arcs[i]
@@ -380,7 +395,62 @@ function compute_ribbon_endpoints(
         tgt_start = tgt_arc.start_angle + fixed_pos[j]
         fixed_pos[j] += tgt_width
 
-        fixed_segments[(i, j)] = (src_start, src_width, tgt_start, tgt_width, agg_abs, 0.0)
+        push!(fixed_pair_order, (i, j))
+        fixed_segments[(i, j)] = (src_start, src_width, tgt_start, tgt_width, agg_abs)
+    end
+
+    if layers_pair_span === :stack_layers
+        # True stacked decomposition: for each fixed pair segment, donors partition that segment.
+        # Width allocation is proportional to each layer's |value| within that pair and fills the full segment.
+        order_mode = layers_stack_order
+        (order_mode === :given || order_mode === :value_desc || order_mode === :value_asc) ||
+            throw(ArgumentError("layers_stack_order must be :given, :value_desc, or :value_asc, got $order_mode"))
+
+        # Iterate in deterministic (aggregate) pair order.
+        for (i, j) in fixed_pair_order
+            seg = fixed_segments[(i, j)]
+            src_start, src_width_full, tgt_start, tgt_width_full, agg_abs = seg
+            agg_abs > 0 || continue
+
+            abs_vals = Vector{Float64}(undef, nL)
+            signed_vals = Vector{Float64}(undef, nL)
+            @inbounds for ℓ in 1:nL
+                v = Float64(cooc.layers[i, j, ℓ])
+                signed_vals[ℓ] = v
+                abs_vals[ℓ] = abs(v)
+            end
+
+            total_abs = sum(abs_vals)
+            total_abs > 0 || continue
+            idxs = collect(1:nL)
+            if order_mode === :value_desc
+                sort!(idxs, by = ℓ -> abs_vals[ℓ], rev = true)
+            elseif order_mode === :value_asc
+                sort!(idxs, by = ℓ -> abs_vals[ℓ], rev = false)
+            end
+
+            src_pos = src_start
+            tgt_pos = tgt_start
+            @inbounds for ℓ in idxs
+                a = abs_vals[ℓ]
+                a > 0 || continue
+                # Each donor gets a share of the fixed segment proportional to |value|.
+                frac = a / total_abs
+                src_end = src_pos + frac * src_width_full
+                tgt_end = tgt_pos + frac * tgt_width_full
+
+                push!(ribbons, Ribbon{Float64}(
+                    RibbonEndpoint{Float64}(i, src_pos, src_end),
+                    RibbonEndpoint{Float64}(j, tgt_pos, tgt_end),
+                    signed_vals[ℓ],
+                ))
+
+                src_pos = src_end
+                tgt_pos = tgt_end
+            end
+        end
+
+        return ribbons
     end
 
     # Draw each layer's value inside the fixed segment for that pair, starting at the segment start.
@@ -391,7 +461,7 @@ function compute_ribbon_endpoints(
             key = (i, j)
             seg = get(fixed_segments, key, nothing)
             seg === nothing && continue
-            src_start, src_width_full, tgt_start, tgt_width_full, agg_abs, _ = seg
+            src_start, src_width_full, tgt_start, tgt_width_full, agg_abs = seg
             frac = agg_abs > 0 ? min(1.0, abs(value) / agg_abs) : 0.0
 
             src_end = src_start + frac * src_width_full
