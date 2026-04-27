@@ -1,0 +1,19 @@
+/* Custom styles for ChordPlots.jl documentation */
+
+/* Center images */
+img {
+    display: block;
+    margin: 1em auto;
+    max-width: 100%;
+    height: auto;
+}
+
+/* Style code blocks */
+pre {
+    border-radius: 4px;
+}
+
+/* Improve readability */
+.docs-main {
+    max-width: 900px;
+}
