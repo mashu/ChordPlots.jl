@@ -377,6 +377,20 @@ using Colors
         end
     end
     
+    @testset "Value histogram" begin
+        using CairoMakie
+        matrix = [0 4 1; 4 0 2; 1 2 0]
+        labels = ["A", "B", "C"]
+        groups = [GroupInfo{String}(:G, labels, 1:3)]
+        cooc = CoOccurrenceMatrix(matrix, labels, groups)
+        @test cooccurrence_values(cooc) == [4.0, 1.0, 2.0]
+        fig, ax = value_histogram(cooc)
+        @test fig isa Figure
+        # Multiple matrices share the histogram
+        fig2, ax2 = value_histogram([cooc, cooc])
+        @test fig2 isa Figure
+    end
+
     @testset "Recipe optional envelope" begin
         using CairoMakie
         matrix = [0 4 1; 4 0 2; 1 2 0]

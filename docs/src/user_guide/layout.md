@@ -28,7 +28,7 @@ layout = compute_layout(cooc, config)
 **What is a custom layout?** A custom layout allows you to control how labels are arranged around the circle, how arcs are sized, and the spacing between elements. This gives you fine-grained control over the visual appearance beyond the default settings.
 
 ```@raw html
-<img src="assets/examples/layout.png" alt="Custom Layout" style="max-width: 600px;"/>
+<img src="../assets/examples/layout.png" alt="Custom Layout" style="max-width: 600px;"/>
 ```
 
 **What this shows:** This example demonstrates several layout customizations applied together:

@@ -13,7 +13,7 @@ fig
 ```
 
 ```@raw html
-<img src="assets/examples/basic.png" alt="Basic Plot" style="max-width: 600px;"/>
+<img src="../assets/examples/basic.png" alt="Basic Plot" style="max-width: 600px;"/>
 ```
 
 ## Standalone Plot

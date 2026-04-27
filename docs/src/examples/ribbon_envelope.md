@@ -7,7 +7,7 @@ You can draw a **wider, translucent band** around each **mean** (or primary) rib
 The figure below is produced by `docs/generate_examples.jl` as `ribbon_envelope.png` (V/D/J toy data, `ValueScaling(false)` on ribbons in the static PNG).
 
 ```@raw html
-<img src="assets/examples/ribbon_envelope.png" alt="Chord diagram with ribbon envelope" style="max-width: 600px;"/>
+<img src="../assets/examples/ribbon_envelope.png" alt="Chord diagram with ribbon envelope" style="max-width: 600px;"/>
 ```
 
 ## Opacity, `alpha_by_value`, and the envelope

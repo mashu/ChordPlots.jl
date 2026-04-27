@@ -19,7 +19,7 @@ chordplot!(ax, cooc; colorscheme = :categorical)
 ```
 
 ```@raw html
-<img src="assets/examples/categorical.png" alt="Categorical Colors" style="max-width: 600px;"/>
+<img src="../assets/examples/categorical.png" alt="Categorical Colors" style="max-width: 600px;"/>
 ```
 
 **What this shows:** This example uses `colorscheme=:categorical`, which assigns a distinct color to each individual label rather than grouping by category. Compare this to the basic example where all V labels share one color, all D labels another, etc. Here, every label (V1, V2, V3, D1, D2, J1, J2) gets its own unique color from the palette. This makes it easier to distinguish individual labels at a glance, but you lose the visual grouping by category. Ribbons blend the colors of their source and target labels, creating a gradient effect that shows which specific labels are connected.

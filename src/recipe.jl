@@ -70,38 +70,22 @@ function compute_scaled_alpha(norm::ValueNormalizer, value::Real,
     clamp(alpha, min(min_alpha, base_alpha), max(min_alpha, base_alpha))
 end
 
-"""
-Parse alpha input into ComponentAlpha. Accepts:
-- Real (single value for all)
-- Tuple{Real,Real,Real} 
-- ComponentAlpha (pass through)
-"""
-function parse_alpha(alpha)::ComponentAlpha
-    if alpha isa ComponentAlpha
-        alpha
-    elseif alpha isa Tuple && length(alpha) >= 3
-        ComponentAlpha(alpha[1], alpha[2], alpha[3])
-    elseif alpha isa AbstractVector && length(alpha) >= 3
-        ComponentAlpha(alpha[1], alpha[2], alpha[3])
-    else
-        ComponentAlpha(Float64(alpha))
-    end
-end
+# Convert user-facing `alpha=` value into a `ComponentAlpha` via dispatch.
+parse_alpha(a::ComponentAlpha) = a
+parse_alpha(a::Tuple{Any, Any, Any}) = ComponentAlpha(a[1], a[2], a[3])
+parse_alpha(a::AbstractVector) = ComponentAlpha(a[1], a[2], a[3])
+parse_alpha(a::Real) = ComponentAlpha(Float64(a))
 
-"""
-Parse alpha_by_value input into ValueScaling. Accepts:
-- Bool (simple on/off)
-- ValueScaling (pass through)
-- Tuple of (enabled, components, min_alpha, scale) for legacy compatibility
-"""
-function parse_scaling(scaling, components, min_alpha, scale)::ValueScaling
-    if scaling isa ValueScaling
-        scaling
-    elseif scaling isa Bool
-        ValueScaling(scaling, components[1], components[2], components[3], min_alpha, scale)
-    else
-        ValueScaling(false, true, true, true, 0.1, :linear)
-    end
+# Convert user-facing `alpha_by_value=` value into a `ValueScaling` via dispatch.
+parse_scaling(s::ValueScaling) = s
+parse_scaling(s::Bool) = s ? ValueScaling(true) : ValueScaling(false)
+parse_scaling(::Any) = ValueScaling(false)
+
+# Resolve a user-facing `colorscheme=` value into a concrete scheme via dispatch.
+resolve_colorscheme(::AbstractChordData, cs::AbstractColorScheme) = cs
+function resolve_colorscheme(cooc::AbstractChordData, cs::Symbol)
+    cs === :categorical && return categorical_colors(nlabels(cooc))
+    return group_colors(cooc)  # :group (default) or unknown -> group
 end
 
 #==============================================================================#
@@ -276,30 +260,29 @@ const ChordPlotType = ChordPlot{<:Tuple{AbstractChordData}}
 # Helpers for order and focus
 #==============================================================================#
 
-function resolve_label_order(cooc::AbstractChordData, order)
-    order === nothing && return nothing
+resolve_label_order(::AbstractChordData, ::Nothing) = nothing
+
+function resolve_label_order(cooc::AbstractChordData, order::AbstractVector{<:Integer})
+    isempty(order) && return nothing
+    lo = collect(Int, order)
+    length(lo) == nlabels(cooc) ? lo : nothing
+end
+
+function resolve_label_order(cooc::AbstractChordData, order::AbstractVector{<:AbstractString})
     isempty(order) && return nothing
     n = nlabels(cooc)
-    if order isa AbstractVector{<:Integer}
-        lo = collect(Int, order)
-        return length(lo) == n ? lo : nothing
-    elseif order isa AbstractVector{<:AbstractString}
-        # Filter to labels that exist in this cooc, preserving order
-        # This allows unified orders from label_order([cooc1, cooc2, ...]) to work
-        idx = Int[]
-        for l in order
-            if haskey(cooc.label_to_index, l)
-                push!(idx, cooc.label_to_index[l])
-            end
-        end
-        # Must cover all labels in cooc (superset order is fine, subset is not)
-        length(idx) != n && return nothing
-        sort(idx) == collect(1:n) || return nothing  # must be permutation of 1:n
-        return idx
-    else
-        return nothing
+    # Filter to labels that exist in this cooc, preserving order, so unified orders
+    # from label_order([cooc1, cooc2, ...]) can be reused per matrix.
+    idx = Int[]
+    for l in order
+        haskey(cooc.label_to_index, l) && push!(idx, cooc.label_to_index[l])
     end
+    length(idx) != n && return nothing
+    sort(idx) == collect(1:n) || return nothing
+    idx
 end
+
+resolve_label_order(::AbstractChordData, ::Any) = nothing
 
 function dimmed_label_indices(cooc::AbstractChordData, focus_group, focus_labels)
     (focus_group === nothing || focus_labels === nothing) && return Set{Int}()
@@ -449,32 +432,12 @@ function Makie.plot!(p::ChordPlotType)
     end
     
     # Color scheme (use filtered cooc for consistency)
-    colorscheme_obs = lift(filtered_cooc_obs, p.colorscheme) do cooc, cs
-        if cs == :group
-            group_colors(cooc)
-        elseif cs == :categorical
-            categorical_colors(nlabels(cooc))
-        elseif cs isa AbstractColorScheme
-            cs
-        else
-            group_colors(cooc)
-        end
-    end
-    
+    colorscheme_obs = lift(resolve_colorscheme, filtered_cooc_obs, p.colorscheme)
+
     # Consolidate drawing configuration into single struct
     # ValueScaling: on = scale by value (min_alpha .. base alpha), off = use base alpha (fixed).
-    # Bool false / unknown → no scaling (each component uses its base alpha). Bool true → all scaled. ValueScaling → use as-is.
     draw_config_obs = lift(p.alpha, p.alpha_by_value, p.dim_color, p.dim_alpha) do alpha, scaling, dim_color, dim_alpha
-        ca = parse_alpha(alpha)
-        vs = if scaling isa ValueScaling
-            scaling
-        elseif scaling === true
-            ValueScaling(true)
-        else
-            # false, nothing, or unknown: no scaling for any component (all opaque)
-            ValueScaling(false, false, false, false, 0.1, :linear)
-        end
-        DrawConfig(ca, vs, RGB{Float64}(dim_color), Float64(dim_alpha))
+        DrawConfig(parse_alpha(alpha), parse_scaling(scaling), RGB{Float64}(dim_color), Float64(dim_alpha))
     end
     
     envelope_matrices_obs = lift(
@@ -531,7 +494,7 @@ function draw_ribbon_envelopes!(
         l_out = clamp(l_out, 0.0, 1.0)
         l_in = Float64(env_lightn_in)
         l_in = clamp(l_in, 0.0, 1.0)
-        mode = env_mode isa Symbol ? env_mode : Symbol(env_mode)
+        mode = Symbol(env_mode)
         mode === :ring || mode === :fill || throw(ArgumentError("ribbon_envelope_mode must be :ring or :fill, got $env_mode"))
         bands = Int(env_bands)
         (bands == 1 || bands == 2) || throw(ArgumentError("ribbon_envelope_bands must be 1 or 2, got $env_bands"))
@@ -674,7 +637,7 @@ function draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, 
     has_env = lift(envelope_obs) do e; e !== nothing; end
     use_hollow = lift(envelope_obs, p.ribbon_envelope_mean) do env, m
         env === nothing && return false
-        ms = m isa Symbol ? m : Symbol(m)
+        ms = Symbol(m)
         ms === :hollow || ms === :tunnel
     end
     # Hollow: faint same-hue fill (ties tube to the band) + edge stroke; solid+envelope: optional white hairline
@@ -849,24 +812,31 @@ end
 """
     value_histogram!(ax, data; kwargs...)
 
-Plot histogram of co-occurrence values on the given axis. `data` can be a single
-`AbstractChordData` or an abstract container of them (e.g. `Vector` of matrices).
-Use to inspect the distribution and choose a threshold (e.g. `min_ribbon_value`).
-Keyword arguments are passed to `histogram!`.
+Plot a histogram of co-occurrence values on the given axis. `data` is either a single
+`AbstractChordData` or a container of them (e.g. `Vector{<:AbstractChordData}`). Use this
+to inspect the distribution and choose a threshold (e.g. `min_ribbon_value`). Extra
+keyword arguments are forwarded to Makie's `hist!`.
 """
-function value_histogram!(ax::Axis, data; kwargs...)
-    vals = data isa AbstractChordData ? cooccurrence_values(data) : cooccurrence_values(collect(data))
+function value_histogram!(ax::Axis, data::AbstractChordData; kwargs...)
+    vals = cooccurrence_values(data)
     isempty(vals) && return ax
-    histogram!(ax, vals; kwargs...)
+    hist!(ax, vals; kwargs...)
+    ax
+end
+
+function value_histogram!(ax::Axis, data; kwargs...)
+    vals = cooccurrence_values(collect(data))
+    isempty(vals) && return ax
+    hist!(ax, vals; kwargs...)
     ax
 end
 
 """
-    value_histogram(data; kwargs...)
+    value_histogram(data; kwargs...) -> (fig, ax)
 
-Create a figure with a histogram of co-occurrence values. `data` can be a single
-`AbstractChordData` or an abstract container of them. Returns `(fig, ax, hist)`.
-Use to choose `min_ribbon_value` from the distribution.
+Create a figure with a histogram of co-occurrence values. `data` is either a single
+`AbstractChordData` or a container of them. Use this to choose a threshold such as
+`min_ribbon_value`.
 """
 function value_histogram(data; kwargs...)
     fig = Figure()

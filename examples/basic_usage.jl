@@ -1,8 +1,5 @@
 # examples/basic_usage.jl
-# Example usage of ChordPlots.jl
-
-using Pkg
-Pkg.activate("..")
+# Run from the repository root with: julia --project=. examples/basic_usage.jl
 
 using ChordPlots
 using CairoMakie
@@ -27,17 +24,16 @@ cooc = CoOccurrenceMatrix(matrix, labels, groups)
 println("  Labels: ", nlabels(cooc))
 println("  Groups: ", ngroups(cooc))
 
-# Create figure
-fig = Figure(size=(800, 800))
-ax = Axis(fig[1,1], title="VDJ Gene Segment Co-occurrence")
+fig = Figure(size = (800, 800))
+ax = Axis(fig[1, 1], title = "VDJ Gene Segment Co-occurrence")
 
 chordplot!(ax, cooc;
     label_fontsize = 9,
     arc_width = 0.06,
-    alpha = 0.6
+    alpha = 0.6,
 )
 
-setup_chord_axis!(ax; padding=0.25)
+setup_chord_axis!(ax; padding = 0.25)
 
 save("example1_basic.png", fig)
 println("  Saved: example1_basic.png")

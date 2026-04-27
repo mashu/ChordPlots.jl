@@ -84,7 +84,7 @@ chordplot!(ax, cooc; alpha_by_value = ValueScaling(
 ```
 
 ```@raw html
-<img src="assets/examples/opacity.png" alt="Strength-based Opacity" style="max-width: 600px;"/>
+<img src="../assets/examples/opacity.png" alt="Strength-based Opacity" style="max-width: 600px;"/>
 ```
 
 ### ValueScaling Fields
