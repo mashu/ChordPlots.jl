@@ -215,6 +215,10 @@ chordplot(cooc; alpha_by_value=ValueScaling(
         ribbon_width_power = 1.0,
         min_ribbon_value = 0,
         ribbon_tension = 0.5,
+        # CoOccurrenceLayers: how to anchor per-donor slices along arcs
+        # - :fixed_pairs (default): each label-pair gets a fixed arc sub-span from the aggregate; donors vary within it
+        # - :per_layer: each donor independently partitions the arc (previous behavior)
+        layers_pair_span = :fixed_pairs,
         # Arcs
         arc_strokewidth = 0.5,
         arc_strokecolor = :black,

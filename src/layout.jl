@@ -43,6 +43,7 @@ struct LayoutConfig{T<:Real}
     label_order::Union{Nothing, Vector{Int}}
     arc_scale::T
     ribbon_width_power::T
+    layers_pair_span::Symbol
 end
 
 # Default constructor with Float64 type (kwargs grouped; struct field order unchanged)
@@ -60,7 +61,10 @@ function LayoutConfig(;
     sort_by::Symbol = :group,
     label_order::Union{Nothing, Vector{Int}} = nothing,
     # Ribbon thickness
-    ribbon_width_power::Real = 1.0
+    ribbon_width_power::Real = 1.0,
+    # CoOccurrenceLayers: anchor per-donor slices to fixed pair spans (:fixed_pairs) or
+    # let each layer partition arc independently (:per_layer; legacy)
+    layers_pair_span::Symbol = :fixed_pairs
 )
     LayoutConfig{Float64}(
         Float64(inner_radius),
@@ -71,7 +75,8 @@ function LayoutConfig(;
         sort_by,
         label_order,
         Float64(arc_scale),
-        Float64(ribbon_width_power)
+        Float64(ribbon_width_power),
+        layers_pair_span
     )
 end
 
@@ -138,7 +143,7 @@ function compute_layout(
     end
     
     # Compute ribbon positions
-    ribbons = compute_ribbon_endpoints(cooc, arcs, arc_angle_positions, config.ribbon_width_power)
+    ribbons = compute_ribbon_endpoints(cooc, arcs, arc_angle_positions, config.ribbon_width_power, config.layers_pair_span)
     
     ChordLayout{Float64}(
         arcs,
@@ -200,8 +205,10 @@ function compute_ribbon_endpoints(
     cooc::AbstractChordData,
     arcs::Vector{ArcSegment{Float64}},
     arc_positions::Vector{Float64},
-    ribbon_width_power::Real = 1.0
+    ribbon_width_power::Real = 1.0,
+    layers_pair_span::Symbol = :fixed_pairs
 )::Vector{Ribbon{Float64}}
+    # layers_pair_span is ignored for non-layer data
     n = nlabels(cooc)
     power = Float64(ribbon_width_power)
 
@@ -266,59 +273,129 @@ function compute_ribbon_endpoints(
     cooc::CoOccurrenceLayers,
     arcs::Vector{ArcSegment{Float64}},
     arc_positions::Vector{Float64},
-    ribbon_width_power::Real = 1.0
+    ribbon_width_power::Real = 1.0,
+    layers_pair_span::Symbol = :fixed_pairs
 )::Vector{Ribbon{Float64}}
     n, _, nL = size(cooc.layers)
     power = Float64(ribbon_width_power)
 
     ribbons = Ribbon{Float64}[]
 
-    # Important: donor layers are meant to be overplotted on the same arc origins,
-    # not stacked into a single partition of each arc. So we compute ribbon endpoints
-    # per layer with positions reset to `arc_positions` each time. Arcs are still sized
-    # from the aggregate `cooc.matrix` via `compute_layout`.
+    if layers_pair_span === :per_layer
+        # Legacy behavior: each layer independently partitions each arc, so pair endpoints
+        # can shift around across donors when values differ.
+        for ℓ in 1:nL
+            layer = @view cooc.layers[:, :, ℓ]
+            pairs = upper_triangle_nonzero_pairs(layer, n)
+
+            arc_sum_power = zeros(Float64, n)
+            if power != 1.0
+                for (i, j, value) in pairs
+                    abs_value = abs(value)
+                    src_flow = arcs[i].value
+                    tgt_flow = arcs[j].value
+                    src_flow > 0 && (arc_sum_power[i] += (abs_value / src_flow)^power)
+                    tgt_flow > 0 && (arc_sum_power[j] += (abs_value / tgt_flow)^power)
+                end
+            end
+
+            positions = copy(arc_positions)
+            for (i, j, value) in pairs
+                abs_value = abs(value)
+                src_arc = arcs[i]
+                tgt_arc = arcs[j]
+                src_arc_span = arc_span(src_arc)
+                tgt_arc_span = arc_span(tgt_arc)
+                src_flow = src_arc.value
+                tgt_flow = tgt_arc.value
+
+                if power == 1.0
+                    src_width = src_flow > 0 ? src_arc_span * (abs_value / src_flow) : 0.0
+                    tgt_width = tgt_flow > 0 ? tgt_arc_span * (abs_value / tgt_flow) : 0.0
+                else
+                    src_ratio = src_flow > 0 ? (abs_value / src_flow)^power : 0.0
+                    tgt_ratio = tgt_flow > 0 ? (abs_value / tgt_flow)^power : 0.0
+                    src_width = arc_sum_power[i] > 0 ? src_arc_span * src_ratio / arc_sum_power[i] : 0.0
+                    tgt_width = arc_sum_power[j] > 0 ? tgt_arc_span * tgt_ratio / arc_sum_power[j] : 0.0
+                end
+
+                src_start = src_arc.start_angle + positions[i]
+                src_end = src_start + src_width
+                positions[i] += src_width
+
+                tgt_start = tgt_arc.start_angle + positions[j]
+                tgt_end = tgt_start + tgt_width
+                positions[j] += tgt_width
+
+                push!(ribbons, Ribbon{Float64}(
+                    RibbonEndpoint{Float64}(i, src_start, src_end),
+                    RibbonEndpoint{Float64}(j, tgt_start, tgt_end),
+                    Float64(value)
+                ))
+            end
+        end
+        return ribbons
+    end
+
+    # Default: :fixed_pairs
+    layers_pair_span === :fixed_pairs || throw(ArgumentError("layers_pair_span must be :fixed_pairs or :per_layer, got $layers_pair_span"))
+
+    # Precompute a fixed arc sub-span for each label pair from the aggregate matrix.
+    agg_pairs = upper_triangle_nonzero_pairs(cooc.matrix, n)
+    agg_arc_sum_power = zeros(Float64, n)
+    if power != 1.0
+        for (i, j, value) in agg_pairs
+            abs_value = abs(value)
+            src_flow = arcs[i].value
+            tgt_flow = arcs[j].value
+            src_flow > 0 && (agg_arc_sum_power[i] += (abs_value / src_flow)^power)
+            tgt_flow > 0 && (agg_arc_sum_power[j] += (abs_value / tgt_flow)^power)
+        end
+    end
+
+    fixed_pos = copy(arc_positions)
+    fixed_segments = Dict{Tuple{Int,Int}, Tuple{Float64,Float64,Float64,Float64,Float64,Float64}}()
+    # (i,j) => (src_start, src_width, tgt_start, tgt_width, agg_abs, dummy)
+    for (i, j, value) in agg_pairs
+        agg_abs = abs(value)
+        src_arc = arcs[i]
+        tgt_arc = arcs[j]
+        src_span = arc_span(src_arc)
+        tgt_span = arc_span(tgt_arc)
+        src_flow = src_arc.value
+        tgt_flow = tgt_arc.value
+
+        if power == 1.0
+            src_width = src_flow > 0 ? src_span * (agg_abs / src_flow) : 0.0
+            tgt_width = tgt_flow > 0 ? tgt_span * (agg_abs / tgt_flow) : 0.0
+        else
+            src_ratio = src_flow > 0 ? (agg_abs / src_flow)^power : 0.0
+            tgt_ratio = tgt_flow > 0 ? (agg_abs / tgt_flow)^power : 0.0
+            src_width = agg_arc_sum_power[i] > 0 ? src_span * src_ratio / agg_arc_sum_power[i] : 0.0
+            tgt_width = agg_arc_sum_power[j] > 0 ? tgt_span * tgt_ratio / agg_arc_sum_power[j] : 0.0
+        end
+
+        src_start = src_arc.start_angle + fixed_pos[i]
+        fixed_pos[i] += src_width
+        tgt_start = tgt_arc.start_angle + fixed_pos[j]
+        fixed_pos[j] += tgt_width
+
+        fixed_segments[(i, j)] = (src_start, src_width, tgt_start, tgt_width, agg_abs, 0.0)
+    end
+
+    # Draw each layer's value inside the fixed segment for that pair, starting at the segment start.
     for ℓ in 1:nL
         layer = @view cooc.layers[:, :, ℓ]
         pairs = upper_triangle_nonzero_pairs(layer, n)
-
-        arc_sum_power = zeros(Float64, n)
-        if power != 1.0
-            for (i, j, value) in pairs
-                abs_value = abs(value)
-                src_flow = arcs[i].value
-                tgt_flow = arcs[j].value
-                src_flow > 0 && (arc_sum_power[i] += (abs_value / src_flow)^power)
-                tgt_flow > 0 && (arc_sum_power[j] += (abs_value / tgt_flow)^power)
-            end
-        end
-
-        positions = copy(arc_positions)
         for (i, j, value) in pairs
-            abs_value = abs(value)
-            src_arc = arcs[i]
-            tgt_arc = arcs[j]
-            src_arc_span = arc_span(src_arc)
-            tgt_arc_span = arc_span(tgt_arc)
-            src_flow = src_arc.value
-            tgt_flow = tgt_arc.value
+            key = (i, j)
+            seg = get(fixed_segments, key, nothing)
+            seg === nothing && continue
+            src_start, src_width_full, tgt_start, tgt_width_full, agg_abs, _ = seg
+            frac = agg_abs > 0 ? min(1.0, abs(value) / agg_abs) : 0.0
 
-            if power == 1.0
-                src_width = src_flow > 0 ? src_arc_span * (abs_value / src_flow) : 0.0
-                tgt_width = tgt_flow > 0 ? tgt_arc_span * (abs_value / tgt_flow) : 0.0
-            else
-                src_ratio = src_flow > 0 ? (abs_value / src_flow)^power : 0.0
-                tgt_ratio = tgt_flow > 0 ? (abs_value / tgt_flow)^power : 0.0
-                src_width = arc_sum_power[i] > 0 ? src_arc_span * src_ratio / arc_sum_power[i] : 0.0
-                tgt_width = arc_sum_power[j] > 0 ? tgt_arc_span * tgt_ratio / arc_sum_power[j] : 0.0
-            end
-
-            src_start = src_arc.start_angle + positions[i]
-            src_end = src_start + src_width
-            positions[i] += src_width
-
-            tgt_start = tgt_arc.start_angle + positions[j]
-            tgt_end = tgt_start + tgt_width
-            positions[j] += tgt_width
+            src_end = src_start + frac * src_width_full
+            tgt_end = tgt_start + frac * tgt_width_full
 
             push!(ribbons, Ribbon{Float64}(
                 RibbonEndpoint{Float64}(i, src_start, src_end),

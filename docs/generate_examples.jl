@@ -280,6 +280,7 @@ chordplot!(
         min_alpha = 0.02,
     ),
     alpha = ComponentAlpha(ribbons = 0.2, arcs = 0.95, labels = 1.0),
+    layers_pair_span = :fixed_pairs,
     arc_strokewidth = 0.0,
     arc_strokecolor = :transparent,
     label_color = :black,

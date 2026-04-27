@@ -53,6 +53,7 @@ chordplot!(
     # Wider opacity range: very faint single-donor slices, strong overlap buildup
     alpha_by_value = ValueScaling(enabled = true, components = (ribbons = true, arcs = false, labels = false), min_alpha = 0.03),
     alpha = ComponentAlpha(ribbons = 0.25, arcs = 0.95, labels = 1.0),
+    layers_pair_span = :fixed_pairs,
 )
 setup_chord_axis!(ax)
 fig
