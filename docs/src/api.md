@@ -52,7 +52,6 @@ ValueScaling
 
 ```@docs
 group_colors
-categorical_colors
 gradient_colors
 diverging_colors
 diff_colors
@@ -61,6 +60,8 @@ CategoricalColorScheme
 GradientColorScheme
 DivergingColorScheme
 ```
+
+`categorical_colors(n::Int; palette=:default)` returns a [`CategoricalColorScheme`](@ref) with `n` distinct colors from the chosen palette (`:default` = Wong colorblind-friendly; `:modern` = curated alternative). It is not in the `@docs` block above because Makie also exports a function of the same name, so Documenter resolves the binding to Makie rather than ChordPlots; the local methods are still available via `ChordPlots.categorical_colors`.
 
 ## Color Utilities
 
