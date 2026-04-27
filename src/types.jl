@@ -51,6 +51,22 @@ end
 Base.length(g::GroupInfo) = length(g.labels)
 Base.iterate(g::GroupInfo, state=1) = state > length(g) ? nothing : (g.labels[state], state + 1)
 
+# Dictionary-like access: map a label in this group to its global index.
+#
+# Note: `indices` must align with `labels` (same length, same order).
+function Base.getindex(g::GroupInfo, label::AbstractString)::Int
+    length(g.indices) == length(g.labels) || throw(ArgumentError(
+        "GroupInfo indices must align with labels (got $(length(g.indices)) indices, $(length(g.labels)) labels)"
+    ))
+    pos = findfirst(==(label), g.labels)
+    pos === nothing && throw(KeyError(label))
+    first(g.indices) + (pos - 1)
+end
+
+Base.haskey(g::GroupInfo, label::AbstractString)::Bool = findfirst(==(label), g.labels) !== nothing
+Base.keys(g::GroupInfo) = g.labels
+Base.get(g::GroupInfo, label::AbstractString, default) = haskey(g, label) ? g[label] : default
+
 """
     CoOccurrenceMatrix{T<:Real, S<:AbstractString}
 
