@@ -1,13 +1,16 @@
 # src/types.jl
 # Core data types for ChordPlots with parametric types for compile-time type stability
 
+using Statistics
+
 """
     AbstractChordData
 
 Abstract supertype for chord data.
 
 All subtypes must have fields: `matrix`, `labels`, `groups`, `label_to_index`.
-Use [`CoOccurrenceMatrix`](@ref) for user-supplied weights (counts, frequencies, scores, etc.).
+Use `CoOccurrenceMatrix` for a single weight matrix, or `CoOccurrenceLayers` for
+one layer per condition (e.g. donor) with shared geometry and per-layer overdrawn ribbons.
 """
 abstract type AbstractChordData end
 
@@ -99,6 +102,82 @@ function CoOccurrenceMatrix(
     CoOccurrenceMatrix{T, S}(matrix, labels, groups)
 end
 
+"""
+    CoOccurrenceLayers{T, S, A, M} <: AbstractChordData
+
+Per-layer co-occurrence data: `layers[i, j, ℓ]` is the link strength between
+labels *i* and *j* in layer *ℓ* (e.g. one layer per donor). The field `matrix`
+is an **aggregate** across layers (by default **sum**; see `aggregate=` in the
+constructor). It drives arc sizing/coloring (via `total_flow`) while ribbons
+keep the per-layer values for color and width.
+
+# Layout
+Arcs are sized from the chosen aggregate `matrix` (`aggregate = :mean` / `:median` / `:sum`).
+Ribbons are then laid out **per layer**, each starting from the same arc origin for a given
+label, so multiple donors are directly comparable: donors differ by which links exist and
+their values, but not by an arbitrary offset caused by stacking layers into a single arc
+partition. Colors still use the layer’s signed value in `resolve_ribbon_color`.
+
+Ribbons are drawn **separately** in layer order (standard alpha compositing). For
+**overdrawn** look on similar geometry, use a **lower** base ribbon opacity
+(e.g. `ComponentAlpha(ribbons = 0.35, ...)`) on **repeated** samples; for thin
+slices, opaque ribbons are usually readable.
+"""
+struct CoOccurrenceLayers{T<:Real, S<:AbstractString, A<:AbstractArray{T,3}, M<:AbstractMatrix{T}} <:
+       AbstractChordData
+    layers::A
+    matrix::M
+    labels::Vector{S}
+    groups::Vector{GroupInfo{S}}
+    label_to_index::Dict{S, Int}
+
+    function CoOccurrenceLayers(
+        layers::A,
+        matrix::M,
+        labels::Vector{S},
+        groups::Vector{GroupInfo{S}}
+    ) where {T<:Real, S<:AbstractString, A<:AbstractArray{T,3}, M<:AbstractMatrix{T}}
+        n, m, nL = size(layers)
+        n == m || throw(DimensionMismatch("layers must be n×n×L, got size $(size(layers))"))
+        n == length(labels) || throw(DimensionMismatch("layers first dimension and labels differ"))
+        size(matrix) == (n, n) || throw(DimensionMismatch("matrix and layers disagree in size"))
+        new{T, S, A, M}(layers, matrix, labels, groups, Dict{S,Int}(l => k for (k, l) in enumerate(labels)))
+    end
+end
+
+function aggregate_layers(layers::AbstractArray{T,3}, aggregate::Symbol) where {T<:Real}
+    n, m, L = size(layers)
+    n == m || throw(DimensionMismatch("layers must be n×n×L, got size $(size(layers))"))
+    aggregate in (:sum, :mean, :median) || throw(ArgumentError("aggregate must be :sum, :mean, or :median, got $aggregate"))
+    out = zeros(T, n, n)
+    if aggregate === :sum
+        out .= dropdims(sum(layers, dims=3), dims=3)
+        return out
+    elseif aggregate === :mean
+        out .= dropdims(sum(layers, dims=3), dims=3) ./ T(L)
+        return out
+    else
+        @inbounds for i in 1:n, j in 1:n
+            out[i, j] = median(@view layers[i, j, :])
+        end
+        return out
+    end
+end
+
+function CoOccurrenceLayers(
+    layers::A,
+    labels::Vector{S},
+    groups::Vector{GroupInfo{S}};
+    aggregate::Symbol = :sum
+) where {T<:Real, S<:AbstractString, A<:AbstractArray{T,3}}
+    n, m, nL = size(layers)
+    n == m || throw(DimensionMismatch("layers must be n×n×L, got size $(size(layers))"))
+    nL ≥ 1 || throw(ArgumentError("layers must have a third dimension ≥ 1, got L=$nL"))
+    n == length(labels) || throw(DimensionMismatch("Number of labels $(length(labels)) != n ($n)"))
+    matrix = aggregate_layers(layers, aggregate)
+    return CoOccurrenceLayers(layers, matrix, labels, groups)
+end
+
 #------------------------------------------------------------------------------
 # Shared accessors for AbstractChordData
 #------------------------------------------------------------------------------
@@ -133,6 +212,44 @@ function abs_total_flow(c::AbstractChordData, label_idx::Int)
 end
 function abs_total_flow(c::AbstractChordData, label::AbstractString)
     abs_total_flow(c, c.label_to_index[label])
+end
+
+"""
+    n_layers(c::CoOccurrenceLayers) -> Int
+
+Number of matrix layers (third index of `c.layers`, e.g. one per donor).
+"""
+n_layers(c::CoOccurrenceLayers) = size(c.layers, 3)
+
+function abs_total_flow(c::CoOccurrenceLayers, label_idx::Int)
+    sum(abs, @view c.matrix[label_idx, :])
+end
+function abs_total_flow(c::CoOccurrenceLayers, label::AbstractString)
+    abs_total_flow(c, c.label_to_index[label])
+end
+
+function diverging_pairwise_ribbon_values(cooc::AbstractChordData)
+    n = nlabels(cooc)
+    vals = Float64[]
+    for j in 2:n
+        for i in 1:(j - 1)
+            push!(vals, Float64(cooc.matrix[i, j]))
+        end
+    end
+    vals
+end
+
+function diverging_pairwise_ribbon_values(cooc::CoOccurrenceLayers)
+    n, _, nL = size(cooc.layers)
+    vals = Float64[]
+    for j in 2:n
+        for i in 1:(j - 1)
+            for ℓ in 1:nL
+                push!(vals, Float64(cooc.layers[i, j, ℓ]))
+            end
+        end
+    end
+    vals
 end
 
 function get_group(c::AbstractChordData, label_idx::Int)::Symbol

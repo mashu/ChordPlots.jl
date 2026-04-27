@@ -56,6 +56,26 @@ using Colors
             @test total_flow(cooc, 1) == sum(matrix[1, :])
         end
     end
+
+    @testset "CoOccurrenceLayers" begin
+        l1 = [0.0 0.4; 0.0 0.0]
+        l2 = [0.0 0.2; 0.0 0.0]
+        layers = cat(l1, l2; dims=3)
+        labels = ["A", "B"]
+        groups = [GroupInfo{String}(:G, labels, 1:2)]
+        cooc = CoOccurrenceLayers(layers, labels, groups)
+        @test n_layers(cooc) == 2
+        @test cooc[1, 2] ≈ 0.6
+        @test abs_total_flow(cooc, 1) ≈ 0.6
+        layout = compute_layout(cooc)
+        @test nribbons(layout) == 2
+        # Each donor layer starts from the same arc origin for that label
+        r1, r2 = layout.ribbons[1], layout.ribbons[2]
+        @test r1.source.start_angle ≈ r2.source.start_angle
+        @test r1.target.start_angle ≈ r2.target.start_angle
+        dcs = diverging_colors(cooc)
+        @test dcs.range[1] < dcs.range[2]
+    end
     
     @testset "Layout Computation" begin
         matrix = [0 3 1 0 0 0;
@@ -217,6 +237,45 @@ using Colors
             @test path.target_idx == 2
         end
         
+        @testset "Ribbon envelope geometry" begin
+            src = RibbonEndpoint{Float64}(1, 0.1, 0.3)
+            tgt = RibbonEndpoint{Float64}(2, 2.0, 2.2)
+            ribbon = Ribbon{Float64}(src, tgt, 10.0)
+            at_zero = ribbon_for_envelope_draw(ribbon, 0.0)
+            @test endpoint_span(at_zero.source) ≈ endpoint_span(ribbon.source)
+            # scale = 1 + span / (2|m|)  →  span=20, m=10  →  factor 2
+            twox = ribbon_for_envelope_draw(ribbon, 20.0)
+            @test endpoint_span(twox.source) ≈ 2 * endpoint_span(ribbon.source)
+            # span=60, m=10 → 1 + 3 = 4
+            fourx = ribbon_for_envelope_draw(ribbon, 60.0)
+            @test endpoint_span(fourx.source) ≈ 4 * endpoint_span(ribbon.source)
+            # Small span: minimum extra angular width (1.15) applies when 1+span/2m would be below that
+            tight = ribbon_for_envelope_draw(ribbon, 1.0)  # raw 1+1/20; floor 1.15
+            @test endpoint_span(tight.source) ≈ 1.15 * endpoint_span(ribbon.source)
+            @test_throws ArgumentError ribbon_for_envelope_draw(ribbon, -0.1)
+        end
+        
+        @testset "envelope_widen_scale matches envelope ribbon" begin
+            src = RibbonEndpoint{Float64}(1, 0.1, 0.3)
+            tgt = RibbonEndpoint{Float64}(2, 2.0, 2.2)
+            ribbon = Ribbon{Float64}(src, tgt, 10.0)
+            s = envelope_widen_scale(ribbon, 9.0)
+            rw = ribbon_widened(ribbon, s)
+            re = ribbon_for_envelope_draw(ribbon, 9.0)
+            @test rw.source.start_angle == re.source.start_angle
+        end
+
+        @testset "Envelope ring polygon" begin
+            src = RibbonEndpoint{Float64}(1, 0.1, 0.3)
+            tgt = RibbonEndpoint{Float64}(2, 2.0, 2.2)
+            ribbon = Ribbon{Float64}(src, tgt, 10.0)
+            wide = ribbon_for_envelope_draw(ribbon, 20.0)
+            p_m = ribbon_path(ribbon, 0.8; n_bezier = 20)
+            p_w = ribbon_path(wide, 0.8; n_bezier = 20)
+            ring = ribbon_envelope_ring_polygon(p_m, p_w)
+            @test !isempty(ring.interiors)
+        end
+        
         @testset "Label position" begin
             arc = ArcSegment{Float64}(1, 0.0, π/4, 10.0)
             lp = label_position(arc, 1.0, 0.1)
@@ -316,6 +375,25 @@ using Colors
                 @test ribbon_color isa RGB
             end
         end
+    end
+    
+    @testset "Recipe optional envelope" begin
+        using CairoMakie
+        matrix = [0 4 1; 4 0 2; 1 2 0]
+        labels = ["A", "B", "C"]
+        groups = [GroupInfo{String}(:G, labels, 1:3)]
+        cooc = CoOccurrenceMatrix(matrix, labels, groups)
+        lo = zeros(3, 3)
+        hi = zeros(3, 3)
+        hi[1, 2] = hi[2, 1] = 8
+        hi[1, 3] = hi[3, 1] = 4
+        hi[2, 3] = hi[3, 2] = 5
+        fig, ax, plt = chordplot(
+            cooc;
+            ribbon_envelope_low = lo,
+            ribbon_envelope_high = hi,
+        )
+        @test fig isa Figure
     end
     
     @testset "Edge Cases" begin

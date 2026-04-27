@@ -1,7 +1,7 @@
 # src/geometry.jl
 # Geometric primitives: arcs, Bezier curves, and path generation
 
-using GeometryBasics: Point2f, Vec2f
+using GeometryBasics: Point2f, Vec2f, Polygon
 
 #==============================================================================#
 # Basic Trigonometric Helpers
@@ -116,6 +116,67 @@ struct RibbonPath
 end
 
 """
+    widen_ribbon_endpoint(ep::RibbonEndpoint, scale::Real) -> RibbonEndpoint
+
+Scale the angular span of `ep` about its midpoint by `scale` (label index unchanged).
+Used for optional ribbon envelopes drawn behind the mean ribbon.
+"""
+function widen_ribbon_endpoint(ep::RibbonEndpoint{T}, scale::Real) where T
+    mid = Float64(endpoint_midpoint(ep))
+    half = Float64(endpoint_span(ep)) / 2 * Float64(scale)
+    RibbonEndpoint{T}(ep.label_idx, T(mid - half), T(mid + half))
+end
+
+"""
+    envelope_widen_scale(ribbon::Ribbon, span::Real; eps = 1e-12) -> Float64
+
+Value-space → angular multiplier `scale` (same as in `ribbon_for_envelope_draw`): each
+endpoint’s half-width is multiplied by this factor relative to the **mean** ribbon.
+"""
+function envelope_widen_scale(ribbon::Ribbon, span::Real; eps::Real = 1e-12)
+    m = Float64(ribbon.value)
+    spanf = Float64(span)
+    spanf < 0 && throw(ArgumentError("ribbon envelope span must be non-negative, got $spanf"))
+    mabs = max(abs(m), Float64(eps))
+    scale = 1.0 + spanf / (2 * mabs)
+    if spanf > 0
+        scale = max(scale, 1.0 + 0.15)
+    end
+    scale
+end
+
+"""
+    ribbon_widened(ribbon::Ribbon, scale::Real) -> Ribbon
+
+Copy of `ribbon` with both endpoints’ angular half-spans scaled by `scale` (about each midpoint);
+`1.0` is the mean, larger values are wider. Used to build mid / outer paths for the envelope band.
+"""
+function ribbon_widened(ribbon::Ribbon{T}, scale::Real) where T
+    Ribbon{T}(
+        widen_ribbon_endpoint(ribbon.source, scale),
+        widen_ribbon_endpoint(ribbon.target, scale),
+        ribbon.value
+    )
+end
+
+"""
+    ribbon_for_envelope_draw(ribbon::Ribbon, span::Real; eps = 1e-12) -> Ribbon
+
+Return a ribbon with the same `value` and endpoints’ label indices, but each endpoint’s
+angular interval widened symmetrically about its midpoint. `span` is a value-space width
+you supply (for example `high - low` for a pair). The angular **half**-span is scaled by
+`1 + span / (2 * max(|value|, ε))` relative to the mean layer, so even a modest `span` is
+visibly wider than the mean ribbon (unlike a multiplicative `max(1, …)` that can leave the
+two layers identical). When `span > 0` a **minimum** scale of `1.15` also applies so thin
+links still show a visible band. When `span = 0`, the factor is 1. The package does not compute
+statistics — it only maps your `span` to geometry.
+"""
+function ribbon_for_envelope_draw(ribbon::Ribbon{T}, span::Real; eps::Real = 1e-12) where T
+    s = envelope_widen_scale(ribbon, span; eps = eps)
+    ribbon_widened(ribbon, s)
+end
+
+"""
     ribbon_path(ribbon::Ribbon, radius::Real; n_bezier::Int=30, tension::Real=0.5)
 
 Generate the path for a ribbon connecting two arcs.
@@ -199,6 +260,25 @@ function ribbon_path(
     end
     
     RibbonPath(path, src.label_idx, tgt.label_idx)
+end
+
+"""
+    ribbon_envelope_ring_polygon(path_mean::RibbonPath, path_envelope::RibbonPath) -> Polygon
+
+Return a **filled annulus** between the mean ribbon outline (`path_mean`) and the widened
+envelope outline (`path_envelope`), as one `Polygon` with a single interior hole. This
+matches the usual “confidence” reading: only the **margin** is filled, not a second
+full-width ribbon under the mean (so the band is not covered by the solid mean in the
+interior of the link where the two shapes overlap).
+"""
+function ribbon_envelope_ring_polygon(
+    path_mean::RibbonPath,
+    path_envelope::RibbonPath
+)
+    p_in = path_mean.points
+    p_out = path_envelope.points
+    length(p_in) >= 3 && length(p_out) >= 3 || throw(ArgumentError("ribbon paths need at least 3 points for an envelope ring"))
+    Polygon(p_out, [collect(reverse(p_in))])
 end
 
 """

@@ -11,7 +11,7 @@ docs/site/
 
 # Examples output
 *.png
-!docs/src/assets/examples/*.png
+#!docs/src/assets/examples/*.png
 
 # IDE
 .vscode/

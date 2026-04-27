@@ -286,12 +286,8 @@ function diverging_colors(
     n = nlabels(cooc)
     vals = Float64[]
     
-    # Ribbon values (pairwise differences)
-    for j in 2:n
-        for i in 1:(j-1)
-            push!(vals, Float64(cooc.matrix[i, j]))
-        end
-    end
+    # Ribbon values (all pairs; multilayer = per-layer values)
+    append!(vals, diverging_pairwise_ribbon_values(cooc))
     
     # Net flows per label (for arc coloring)
     for i in 1:n

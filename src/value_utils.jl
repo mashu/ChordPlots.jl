@@ -30,3 +30,17 @@ function cooccurrence_values(coocs::AbstractVector{<:AbstractChordData})
     vcat((cooccurrence_values(c) for c in coocs)...)
 end
 
+function cooccurrence_values(cooc::CoOccurrenceLayers)
+    n, _, nL = size(cooc.layers)
+    vals = Float64[]
+    for j in 2:n
+        for i in 1:(j - 1)
+            for k in 1:nL
+                v = cooc.layers[i, j, k]
+                v > 0 && push!(vals, Float64(v))
+            end
+        end
+    end
+    vals
+end
+

@@ -10,7 +10,7 @@
 
 ChordPlots.jl is a Julia package for creating chord diagrams using the Makie plotting ecosystem. Chord diagrams visualize relationships between categorical variables, showing how different categories co-occur with each other.
 
-Chord plots accept **user-preprocessed weights** as a `CoOccurrenceMatrix`. ChordPlots does not assume how your data is normalized (or normalized at all) — it simply visualizes the relationships implied by the values you provide.
+Chord plots accept **user-preprocessed weights** as a `CoOccurrenceMatrix` (one matrix) or a [`CoOccurrenceLayers`](@ref) (several same-sized layers, e.g. per donor). ChordPlots does not assume how your data is normalized (or normalized at all) — it simply visualizes the relationships implied by the values you provide.
 
 ## Features
 
@@ -101,6 +101,18 @@ These settings help emphasize the most important labels and create a different v
 
 ![Custom Layout](assets/examples/layout.png)
 
+### Ribbon envelope
+
+Optional **low** / **high** matrices (same size as your weights) draw a **ring-shaped** confidence margin — by default **two tints** (inner / outer) and a **tunnel** mean: colored edge plus **faint** same-hue fill so the estimate and band read as one nested system. See [Ribbon envelope](examples/ribbon_envelope.md).
+
+![Ribbon envelope](assets/examples/ribbon_envelope.png)
+
+### Co-occurrence layers (per donor)
+
+`CoOccurrenceLayers` stores **one matrix per donor** (or batch). The layout builds one **bundle** per label pair and splits it into per-donor **slices** whose relative thicknesses follow each donor’s `|value|`. The showcase uses the **union** of all labels across donors (missing labels are zeros) and renders it as a **single** chord plot. See [Multiple layers (donors)](examples/cooccurrence_layers.md).
+
+![Co-occurrence layers (union labels across donors)](assets/examples/cooccurrence_layers.png)
+
 ## Installation
 
 ```julia
@@ -116,6 +128,7 @@ Explore the documentation to learn how to:
 - [Customize appearance](user_guide/customization.md) with colors, layouts, and styling
 - [Filter and manage data](user_guide/filtering.md) for better visualizations
 - [Use advanced features](user_guide/layout.md) for publication-quality figures
+- **Examples:** [basic](examples/basic.md), [ribbon envelope](examples/ribbon_envelope.md), [co-occurrence layers (donors)](examples/cooccurrence_layers.md)
 
 ## License
 

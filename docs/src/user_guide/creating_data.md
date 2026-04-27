@@ -21,6 +21,23 @@ groups = [
 cooc = CoOccurrenceMatrix(matrix, labels, groups)
 ```
 
+## Several layers (e.g. one matrix per donor)
+
+If each observation (donor, batch, etc.) has its own `n×n` matrix in a **common value range**,
+pack them as `layers[i, j, ℓ]`. The layout allocates a **bundle** for each pair from the sum of
+**absolute** values, then **splits** the bundle: each layer’s segment width is proportional to its
+share of that sum, so per-donor **thickness** encodes |value| (e.g. link strengths differ slightly
+between donors). Ribbons are drawn in order; use **translucent** ribbon `alpha` to stack or opaque
+to read each slice. Lower `alpha` also helps if you draw **repeated** ribbons on the same path (see example docs).
+
+```julia
+layers = cat([0.0 0.3; 0.0 0.0], [0.0 0.2; 0.0 0.0]; dims=3)  # 2×2×2, upper triangle only
+cooc = CoOccurrenceLayers(layers, ["A", "B"], [GroupInfo{String}(:G, ["A", "B"], 1:2)])
+# cooc.matrix is the sum over layers (used for net flow on arcs, etc.)
+```
+
+For a generated **single-plot** showcase over the **union** of labels across donors, see **[Multiple layers (donors)](../examples/cooccurrence_layers.md)**.
+
 ## What values should you put in `matrix`?
 
 - **Counts**: raw co-occurrence counts

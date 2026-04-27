@@ -262,6 +262,75 @@ function compute_ribbon_endpoints(
     ribbons
 end
 
+function compute_ribbon_endpoints(
+    cooc::CoOccurrenceLayers,
+    arcs::Vector{ArcSegment{Float64}},
+    arc_positions::Vector{Float64},
+    ribbon_width_power::Real = 1.0
+)::Vector{Ribbon{Float64}}
+    n, _, nL = size(cooc.layers)
+    power = Float64(ribbon_width_power)
+
+    ribbons = Ribbon{Float64}[]
+
+    # Important: donor layers are meant to be overplotted on the same arc origins,
+    # not stacked into a single partition of each arc. So we compute ribbon endpoints
+    # per layer with positions reset to `arc_positions` each time. Arcs are still sized
+    # from the aggregate `cooc.matrix` via `compute_layout`.
+    for ℓ in 1:nL
+        layer = @view cooc.layers[:, :, ℓ]
+        pairs = upper_triangle_nonzero_pairs(layer, n)
+
+        arc_sum_power = zeros(Float64, n)
+        if power != 1.0
+            for (i, j, value) in pairs
+                abs_value = abs(value)
+                src_flow = arcs[i].value
+                tgt_flow = arcs[j].value
+                src_flow > 0 && (arc_sum_power[i] += (abs_value / src_flow)^power)
+                tgt_flow > 0 && (arc_sum_power[j] += (abs_value / tgt_flow)^power)
+            end
+        end
+
+        positions = copy(arc_positions)
+        for (i, j, value) in pairs
+            abs_value = abs(value)
+            src_arc = arcs[i]
+            tgt_arc = arcs[j]
+            src_arc_span = arc_span(src_arc)
+            tgt_arc_span = arc_span(tgt_arc)
+            src_flow = src_arc.value
+            tgt_flow = tgt_arc.value
+
+            if power == 1.0
+                src_width = src_flow > 0 ? src_arc_span * (abs_value / src_flow) : 0.0
+                tgt_width = tgt_flow > 0 ? tgt_arc_span * (abs_value / tgt_flow) : 0.0
+            else
+                src_ratio = src_flow > 0 ? (abs_value / src_flow)^power : 0.0
+                tgt_ratio = tgt_flow > 0 ? (abs_value / tgt_flow)^power : 0.0
+                src_width = arc_sum_power[i] > 0 ? src_arc_span * src_ratio / arc_sum_power[i] : 0.0
+                tgt_width = arc_sum_power[j] > 0 ? tgt_arc_span * tgt_ratio / arc_sum_power[j] : 0.0
+            end
+
+            src_start = src_arc.start_angle + positions[i]
+            src_end = src_start + src_width
+            positions[i] += src_width
+
+            tgt_start = tgt_arc.start_angle + positions[j]
+            tgt_end = tgt_start + tgt_width
+            positions[j] += tgt_width
+
+            push!(ribbons, Ribbon{Float64}(
+                RibbonEndpoint{Float64}(i, src_start, src_end),
+                RibbonEndpoint{Float64}(j, tgt_start, tgt_end),
+                Float64(value)
+            ))
+        end
+    end
+
+    ribbons
+end
+
 #==============================================================================#
 # Layout Utilities
 #==============================================================================#

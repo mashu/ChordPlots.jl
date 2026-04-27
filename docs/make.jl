@@ -44,6 +44,8 @@ makedocs(
         ],
         "Examples" => [
             "Basic Example" => "examples/basic.md",
+            "Ribbon envelope" => "examples/ribbon_envelope.md",
+            "Multiple layers (donors)" => "examples/cooccurrence_layers.md",
         ],
         "API Reference" => "api.md",
     ],

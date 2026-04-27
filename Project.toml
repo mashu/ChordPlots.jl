@@ -1,6 +1,6 @@
 name = "ChordPlots"
 uuid = "e0224685-ada7-484b-b848-3b026668d1bd"
-version = "1.0.0"
+version = "1.1.0"
 authors = ["Mateusz Kaduk <mateusz.kaduk@gmail.com>"]
 
 [deps]
@@ -10,6 +10,7 @@ GeometryBasics = "5c1252a2-5f33-56bf-86c9-59e7332b4326"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]

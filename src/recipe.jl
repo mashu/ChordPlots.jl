@@ -1,6 +1,7 @@
 # src/recipe.jl
 # Makie plotting recipe for chord diagrams
 
+using Colors: RGBA, RGB, alpha
 using Makie
 using GeometryBasics: Point2f, Polygon
 
@@ -153,11 +154,27 @@ Create a chord diagram from co-occurrence data.
   - For each component (ribbons, arcs, labels), **on** → opacity scales by value from `min_alpha` to the component’s base `alpha`; **off** → opacity is that component base alpha (fixed).
   - `false` or unknown → no scaling (all components 1.0). `true` → all components scaled. `ValueScaling(; components=(ribbons=..., arcs=..., labels=...))` → per-component.
 
+For `CoOccurrenceLayers` with several donors on the **same** ribbon path, prefer **moderate** ribbon `alpha` (e.g. `0.3`–`0.45` per ribbon) so each layer stays visible and overlap reads as stronger color (variance / agreement), not a single opaque slab.
+
 ## Focus (highlight subset)
 - `focus_group = nothing`: Group to apply focus styling
 - `focus_labels = nothing`: Labels to keep highlighted
 - `dim_color = RGB(0.55, 0.55, 0.55)`: Color for dimmed elements
 - `dim_alpha = 0.25`: Alpha for dimmed elements
+
+## Ribbon envelope (optional uncertainty band)
+Supply symmetric matrices the same size as the **input** `cooc.matrix` (before `min_arc_flow` filtering; they are sliced the same way as the matrix when labels are dropped). The package does not compute means or SDs — you choose the bounds (e.g. mean ± SD per pair). Angular width scales as `1 + (high - low) / (2|mean|)` on each end relative to the mean layer so a visible band is **wider** than the mean, not the same.
+- `ribbon_envelope_low = nothing`, `ribbon_envelope_high = nothing`: both required to draw; each entry `high[i,j] - low[i,j]` drives the extra width behind the mean ribbon.
+- `ribbon_envelope_alpha = 0.38`: opacity of the envelope fill. `ValueScaling` / `alpha_by_value` does **not** change envelope opacity.
+- `ribbon_envelope_color = nothing`: `nothing` → use the same hue as the mean ribbon, blended; otherwise any Makie color.
+- `ribbon_envelope_lighten = 0.55`: (outer band) blend fill toward white; for two bands, pair with `ribbon_envelope_lighten_inner`.
+- `ribbon_envelope_stroke = 0.0`: optional **white** hairline on the **mean** when it is still filled (`:solid`); 0 = off. Ignored for `:hollow` (see `ribbon_envelope_mean`).
+- `ribbon_envelope_mode = :ring`: `:ring` fills only the **margin** between the mean and widened outlines. Use `:fill` for the full wide shape under a solid mean.
+- `ribbon_envelope_bands = 2` (`:ring` only): `2` = two tints, **inner** and **outer** (see `ribbon_envelope_lighten_inner` / `ribbon_envelope_lighten`). `1` = single ring (previous look).
+- `ribbon_envelope_lighten_inner` (e.g. `0.2`): for two bands, blend toward **white** less for the **inner** half of the margin (closer to the mean), more for the **outer** (`ribbon_envelope_lighten`).
+- `ribbon_envelope_mean = :hollow` (`:solid` or `:hollow` / alias `:tunnel`): with an envelope, draw the **mean** as a **stroke in the link color** and, by default, a **faint** same-hue fill (`ribbon_envelope_mean_faint_fill`) so the estimate reads as a **tinted tube inside** the band—not an empty cutout, and not a second opaque ribbon. Set **faint fill to 0** for a fully empty tunnel. `:solid` keeps a fully filled mean (optional `ribbon_envelope_stroke` for a light edge).
+- `ribbon_envelope_mean_faint_fill = 0.32`: for `:hollow`, **multiply** the mean ribbon’s fill alpha by this (0 = fully transparent fill, 1 = same opacity as a solid mean’s fill). Ignored for `:solid`.
+- `ribbon_envelope_mean_strokewidth = 1.25` (Makie units): stroke width for `:hollow`.
 
 # Example
 ```julia
@@ -220,6 +237,25 @@ chordplot(cooc; alpha_by_value=ValueScaling(
         focus_labels = nothing,
         dim_color = RGB(0.55, 0.55, 0.55),
         dim_alpha = 0.25,
+        # Ribbon envelope (user-supplied bounds; same matrix size as input cooc)
+        ribbon_envelope_low = nothing,
+        ribbon_envelope_high = nothing,
+        ribbon_envelope_alpha = 0.38,
+        ribbon_envelope_color = nothing,
+        # Two-band ring: outer = more pale (higher = more toward white); inner = `ribbon_envelope_lighten_inner`
+        ribbon_envelope_lighten = 0.55,
+        ribbon_envelope_lighten_inner = 0.2,
+        # Optional white hairline on mean when `ribbon_envelope_mean = :solid` (0 = off)
+        ribbon_envelope_stroke = 0.0,
+        # :ring = annulus; :fill = full wide under mean
+        ribbon_envelope_mode = :ring,
+        # 1 = one band; 2 = inner+outer tints (ring only)
+        ribbon_envelope_bands = 2,
+        # :solid = filled mean; :hollow / :tunnel = stroke + optional faint same-hue fill
+        ribbon_envelope_mean = :hollow,
+        # Hollow only: mean fill alpha = ribbon alpha × this (0 = empty tunnel)
+        ribbon_envelope_mean_faint_fill = 0.32,
+        ribbon_envelope_mean_strokewidth = 1.25,
     )
 end
 
@@ -269,6 +305,79 @@ function dimmed_label_indices(cooc::AbstractChordData, focus_group, focus_labels
     Set(dimmed)
 end
 
+"""
+    apply_min_arc_flow(cooc, min_flow) -> (filtered_cooc, keep_indices)
+
+If `min_flow > 0`, drop low-flow labels: for `CoOccurrenceMatrix` the criterion is
+the **signed** row sum (`total_flow`); for `CoOccurrenceLayers` it is
+the **absolute** row sum over all layers (`abs_total_flow`, matching
+`compute_layout`).
+
+Returns the subsetted chord data and `keep_indices` (`nothing` if nothing was removed), a
+`Vector{Int}` of original label indices into the input `cooc`.
+"""
+function apply_min_arc_flow(cooc::AbstractChordData, min_flow::Real)
+    if min_flow <= 0
+        return cooc, nothing
+    end
+    flows = [total_flow(cooc, i) for i in 1:nlabels(cooc)]
+    keep_indices = Int[i for i in 1:nlabels(cooc) if flows[i] >= min_flow]
+    if length(keep_indices) == nlabels(cooc)
+        return cooc, nothing
+    end
+    new_matrix = cooc.matrix[keep_indices, keep_indices]
+    new_labels = cooc.labels[keep_indices]
+    T = eltype(cooc.matrix)
+    S = eltype(cooc.labels)
+    new_groups = GroupInfo{S}[]
+    idx = 1
+    for g in cooc.groups
+        group_mask = [i in g.indices for i in keep_indices]
+        remaining = new_labels[group_mask]
+        if !isempty(remaining)
+            n_remaining = length(remaining)
+            push!(new_groups, GroupInfo{S}(g.name, remaining, idx:idx + n_remaining - 1))
+            idx += n_remaining
+        end
+    end
+    return CoOccurrenceMatrix{T, S}(new_matrix, new_labels, new_groups), keep_indices
+end
+
+function apply_min_arc_flow(cooc::CoOccurrenceLayers, min_flow::Real)
+    if min_flow <= 0
+        return cooc, nothing
+    end
+    n = nlabels(cooc)
+    flows = [abs_total_flow(cooc, i) for i in 1:n]
+    keep_indices = [i for i in 1:n if flows[i] >= min_flow]
+    if length(keep_indices) == n
+        return cooc, nothing
+    end
+    new_layers = cooc.layers[keep_indices, keep_indices, :]
+    new_labels = cooc.labels[keep_indices]
+    S = eltype(cooc.labels)
+    new_groups = GroupInfo{S}[]
+    idx = 1
+    for g in cooc.groups
+        group_mask = [i in g.indices for i in keep_indices]
+        remaining = new_labels[group_mask]
+        if !isempty(remaining)
+            n_rem = length(remaining)
+            push!(new_groups, GroupInfo{S}(g.name, remaining, idx:idx + n_rem - 1))
+            idx += n_rem
+        end
+    end
+    return CoOccurrenceLayers(new_layers, new_labels, new_groups), keep_indices
+end
+
+function slice_matrix_keep(mat::AbstractMatrix, keep::Nothing)
+    mat
+end
+
+function slice_matrix_keep(mat::AbstractMatrix, keep::Vector{Int})
+    mat[keep, keep]
+end
+
 #==============================================================================#
 # Plot Implementation
 #==============================================================================#
@@ -277,39 +386,11 @@ function Makie.plot!(p::ChordPlotType)
     # Extract observables
     cooc_obs = p[:cooc]
     
-    # Filter co-occurrence matrix by minimum arc flow if specified
-    filtered_cooc_obs = lift(cooc_obs, p.min_arc_flow) do cooc, min_flow
-        if min_flow > 0
-            # Filter out labels with total flow below threshold
-            flows = [total_flow(cooc, i) for i in 1:nlabels(cooc)]
-            keep_indices = [i for i in 1:nlabels(cooc) if flows[i] >= min_flow]
-            
-            if length(keep_indices) < nlabels(cooc)
-                # Create filtered matrix
-                new_matrix = cooc.matrix[keep_indices, keep_indices]
-                new_labels = cooc.labels[keep_indices]
-                
-                # Rebuild groups with only remaining labels
-                # Extract type parameters from cooc
-                T = eltype(cooc.matrix)
-                S = eltype(cooc.labels)
-                new_groups = GroupInfo{S}[]
-                idx = 1
-                for g in cooc.groups
-                    group_mask = [i in g.indices for i in keep_indices]
-                    remaining = new_labels[group_mask]
-                    if !isempty(remaining)
-                        n_remaining = length(remaining)
-                        push!(new_groups, GroupInfo{S}(g.name, remaining, idx:idx+n_remaining-1))
-                        idx += n_remaining
-                    end
-                end
-                
-                return CoOccurrenceMatrix{T, S}(new_matrix, new_labels, new_groups)
-            end
-        end
-        cooc
+    filtered_pack_obs = lift(cooc_obs, p.min_arc_flow) do cooc, min_flow
+        apply_min_arc_flow(cooc, min_flow)
     end
+    filtered_cooc_obs = lift(x -> x[1], filtered_pack_obs)
+    kept_label_indices_obs = lift(x -> x[2], filtered_pack_obs)
     
     # Resolve label_order to indices (permutation of 1:n) for fixed circle order
     resolved_order_obs = lift(filtered_cooc_obs, p.label_order) do cooc, order
@@ -373,8 +454,27 @@ function Makie.plot!(p::ChordPlotType)
         DrawConfig(ca, vs, RGB{Float64}(dim_color), Float64(dim_alpha))
     end
     
-    # Draw ribbons first (behind arcs)
-    draw_ribbons!(p, filtered_cooc_obs, filtered_layout_obs, colorscheme_obs, dimmed_indices_obs, draw_config_obs)
+    envelope_matrices_obs = lift(
+        filtered_cooc_obs, kept_label_indices_obs, p.ribbon_envelope_low, p.ribbon_envelope_high
+    ) do cooc, keep, low, high
+        if low === nothing || high === nothing
+            return nothing
+        end
+        size(low) == size(high) || throw(DimensionMismatch("ribbon_envelope_low and ribbon_envelope_high must have the same size"))
+        size(low) == size(cooc.matrix) || throw(DimensionMismatch(
+            "ribbon envelope matrices size $(size(low)) do not match displayed co-occurrence size $(size(cooc.matrix))"
+        ))
+        (slice_matrix_keep(low, keep), slice_matrix_keep(high, keep))
+    end
+    
+    # Envelope ribbons, then mean ribbons (behind arcs)
+    draw_ribbon_envelopes!(
+        p, filtered_cooc_obs, filtered_layout_obs, envelope_matrices_obs,
+        colorscheme_obs, dimmed_indices_obs, draw_config_obs
+    )
+    draw_ribbons!(
+        p, filtered_cooc_obs, filtered_layout_obs, colorscheme_obs, dimmed_indices_obs, draw_config_obs, envelope_matrices_obs
+    )
     
     # Draw arcs
     draw_arcs!(p, filtered_cooc_obs, layout_obs, colorscheme_obs, dimmed_indices_obs, draw_config_obs)
@@ -389,7 +489,112 @@ end
 # Drawing Components
 #==============================================================================#
 
-function draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs, config_obs)
+function draw_ribbon_envelopes!(
+    p::ChordPlotType, cooc_obs, layout_obs, envelope_obs, colorscheme_obs, dimmed_obs, config_obs
+)
+    envelope_data = lift(
+        cooc_obs, layout_obs, envelope_obs, colorscheme_obs, dimmed_obs, config_obs,
+        p.ribbon_tension, p.ribbon_envelope_alpha, p.ribbon_envelope_color, p.ribbon_envelope_lighten,
+        p.ribbon_envelope_lighten_inner, p.ribbon_envelope_mode, p.ribbon_envelope_bands
+    ) do cooc, layout, envpack, cs, dimmed, cfg, tension, env_alpha, env_color_spec, env_lightn_out,
+        env_lightn_in, env_mode, env_bands
+        polys_and_colors = Tuple{Any, RGBA{Float64}}[]
+        envpack === nothing && return polys_and_colors
+        low, high = envpack
+        isempty(layout.ribbons) && return polys_and_colors
+        env_a = Float64(env_alpha)
+        env_a = clamp(env_a, 0.0, 1.0)
+        l_out = Float64(env_lightn_out)
+        l_out = clamp(l_out, 0.0, 1.0)
+        l_in = Float64(env_lightn_in)
+        l_in = clamp(l_in, 0.0, 1.0)
+        mode = env_mode isa Symbol ? env_mode : Symbol(env_mode)
+        mode === :ring || mode === :fill || throw(ArgumentError("ribbon_envelope_mode must be :ring or :fill, got $env_mode"))
+        bands = Int(env_bands)
+        (bands == 1 || bands == 2) || throw(ArgumentError("ribbon_envelope_bands must be 1 or 2, got $env_bands"))
+        r = layout.inner_radius
+        n_bez = 40
+
+        function env_rgba_duo(is_dimmed, base_rgb, light_inner, light_outer)
+            if is_dimmed
+                c = RGBA(cfg.dim_color, cfg.dim_alpha * env_a)
+                return (c, c)
+            end
+            c_in = if light_inner > 0; lighten(base_rgb, light_inner); else; base_rgb; end
+            c_out = if light_outer > 0; lighten(base_rgb, light_outer); else; base_rgb; end
+            (RGBA(c_in, env_a), RGBA(c_out, env_a))
+        end
+        function env_rgba_base(is_dimmed, base_rgb, light1)
+            if is_dimmed
+                return RGBA(cfg.dim_color, cfg.dim_alpha * env_a)
+            end
+            fill_rgb = light1 > 0 ? lighten(base_rgb, light1) : base_rgb
+            return RGBA(fill_rgb, env_a)
+        end
+        
+        # One envelope per label pair: CoOccurrenceLayers may have several ribbons (layers) for the same pair
+        seen_pairs = Set{Tuple{Int, Int}}()
+        for ribbon in layout.ribbons
+            i = ribbon.source.label_idx
+            j = ribbon.target.label_idx
+            a, b = minmax(i, j)
+            (a, b) in seen_pairs && continue
+            push!(seen_pairs, (a, b))
+            span = Float64(high[a, b]) - Float64(low[a, b])
+            span <= 0 && continue
+            
+            sc = envelope_widen_scale(ribbon, span)
+            erw = ribbon_widened(ribbon, sc)
+            is_dimmed = ribbon.source.label_idx in dimmed || ribbon.target.label_idx in dimmed
+            if env_color_spec === nothing
+                base_color = resolve_ribbon_color(cs, ribbon, cooc)
+                base_rgb = RGB{Float64}(base_color)
+            else
+                c0 = Makie.to_color(env_color_spec)
+                base_rgb = RGB{Float64}(c0)
+            end
+
+            if mode === :ring
+                path_mean = ribbon_path(ribbon, r; tension = tension, n_bezier = n_bez)
+                path_env = ribbon_path(erw, r; tension = tension, n_bezier = n_bez)
+                if bands === 1
+                    c = env_rgba_base(is_dimmed, base_rgb, l_out)
+                    ring_poly = ribbon_envelope_ring_polygon(path_mean, path_env)
+                    push!(polys_and_colors, (ring_poly, c))
+                else
+                    c_in, c_out = env_rgba_duo(is_dimmed, base_rgb, l_in, l_out)
+                    s_mid = (1.0 + sc) / 2
+                    rib_mid = ribbon_widened(ribbon, s_mid)
+                    path_mid = ribbon_path(rib_mid, r; tension = tension, n_bezier = n_bez)
+                    ring_outer = ribbon_envelope_ring_polygon(path_mid, path_env)
+                    ring_inner = ribbon_envelope_ring_polygon(path_mean, path_mid)
+                    push!(polys_and_colors, (ring_outer, c_out))
+                    push!(polys_and_colors, (ring_inner, c_in))
+                end
+            else
+                c = env_rgba_base(is_dimmed, base_rgb, l_out)
+                path = ribbon_path(erw, r; tension = tension, n_bezier = n_bez)
+                push!(polys_and_colors, (Polygon(path.points), c))
+            end
+        end
+        polys_and_colors
+    end
+    
+    for_each_env = lift(envelope_data) do data
+        # Makie `poly!` needs `Vector{<:Polygon}` (not `Any` or `AbstractPolygon`); empty must stay typed
+        if isempty(data)
+            return (Polygon{2,Float32}[], RGBA{Float64}[])
+        end
+        polys = [d[1] for d in data]
+        colors = [d[2] for d in data]
+        (polys, colors)
+    end
+    env_polys_obs = lift(x -> x[1], for_each_env)
+    env_colors_obs = lift(x -> x[2], for_each_env)
+    poly!(p, env_polys_obs; color = env_colors_obs, strokewidth = 0)
+end
+
+function draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs, config_obs, envelope_obs)
     ribbon_data = lift(
         cooc_obs, layout_obs, colorscheme_obs, dimmed_obs, config_obs, p.ribbon_tension
     ) do cooc, layout, cs, dimmed, cfg, tension
@@ -442,8 +647,50 @@ function draw_ribbons!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, 
     
     polys_obs = lift(x -> x[1], for_each_ribbon)
     colors_obs = lift(x -> x[2], for_each_ribbon)
-    
-    poly!(p, polys_obs; color=colors_obs, strokewidth=0)
+
+    has_env = lift(envelope_obs) do e; e !== nothing; end
+    use_hollow = lift(envelope_obs, p.ribbon_envelope_mean) do env, m
+        env === nothing && return false
+        ms = m isa Symbol ? m : Symbol(m)
+        ms === :hollow || ms === :tunnel
+    end
+    # Hollow: faint same-hue fill (ties tube to the band) + edge stroke; solid+envelope: optional white hairline
+    fill_color_obs = lift(use_hollow, colors_obs, p.ribbon_envelope_mean_faint_fill) do hollow, cols, faint_in
+        hollow || return cols
+        k = clamp(Float64(faint_in), 0.0, 1.0)
+        if k <= 0.0
+            return [RGBA(Float64(c.r), Float64(c.g), Float64(c.b), 0.0) for c in cols]
+        end
+        return [
+            RGBA(
+                Float64(c.r), Float64(c.g), Float64(c.b), min(1.0, Float64(alpha(c)) * k)
+            ) for c in cols
+        ]
+    end
+    stroke_w_obs = lift(use_hollow, has_env, p.ribbon_envelope_stroke, p.ribbon_envelope_mean_strokewidth) do hollow, he, w_hair, w_mean
+        if hollow
+            w_mean > 0 ? Float64(w_mean) : 0.0
+        elseif he && w_hair > 0
+            Float64(w_hair)
+        else
+            0.0
+        end
+    end
+    stroke_c_obs = lift(use_hollow, has_env, p.ribbon_envelope_stroke, colors_obs) do hollow, he, w_hair, cols
+        n = length(cols)
+        if hollow
+            return [
+                RGBA(
+                    Float64(c.r), Float64(c.g), Float64(c.b), max(min(Float64(alpha(c)), 1.0), 0.0)
+                ) for c in cols
+            ]
+        end
+        if he && w_hair > 0
+            return [RGBA(1.0, 1.0, 1.0, 0.5) for _ in 1:n]
+        end
+        return [RGBA(0.0, 0.0, 0.0, 0.0) for _ in 1:n]
+    end
+    poly!(p, polys_obs; color=fill_color_obs, strokewidth=stroke_w_obs, strokecolor=stroke_c_obs)
 end
 
 function draw_arcs!(p::ChordPlotType, cooc_obs, layout_obs, colorscheme_obs, dimmed_obs, config_obs)

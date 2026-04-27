@@ -27,7 +27,7 @@ fig
 
 # Main Types
 - [`AbstractChordData`](@ref): Abstract supertype for chord data
-- [`CoOccurrenceMatrix`](@ref): User-supplied weights (counts, frequencies, scores, etc.)
+- [`CoOccurrenceMatrix`](@ref), [`CoOccurrenceLayers`](@ref): User-supplied weights (single matrix or one layer per donor/condition)
 - [`ChordLayout`](@ref): Computed layout for rendering
 - [`GroupColorScheme`](@ref), [`CategoricalColorScheme`](@ref): Color schemes
 
@@ -55,7 +55,7 @@ include("recipe.jl")
 
 # Export types
 export AbstractChordData, AbstractLayout, AbstractGeometry
-export CoOccurrenceMatrix, GroupInfo
+export CoOccurrenceMatrix, CoOccurrenceLayers, GroupInfo
 export ArcSegment, RibbonEndpoint, Ribbon
 export ChordLayout
 export LayoutConfig
@@ -67,7 +67,7 @@ export group_colors, categorical_colors, gradient_colors, diverging_colors, diff
 export with_alpha, darken, lighten
 export resolve_arc_color, resolve_ribbon_color
 
-export nlabels, ngroups, total_flow, get_group
+export nlabels, ngroups, n_layers, total_flow, abs_total_flow, get_group
 # Re-export convenience helpers that do not impose semantics on weights
 export cooccurrence_values
 export value_histogram, value_histogram!
@@ -80,6 +80,7 @@ export narcs, nribbons
 # Export geometry functions
 export arc_points, arc_polygon
 export ribbon_path, ribbon_paths
+export widen_ribbon_endpoint, envelope_widen_scale, ribbon_widened, ribbon_for_envelope_draw, ribbon_envelope_ring_polygon
 export label_position, label_positions
 export arc_span, arc_midpoint, endpoint_span, endpoint_midpoint
 export is_self_loop

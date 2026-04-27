@@ -15,6 +15,7 @@ compute_layout
 ```@docs
 AbstractChordData
 CoOccurrenceMatrix
+CoOccurrenceLayers
 ```
 
 ## Data Exploration
