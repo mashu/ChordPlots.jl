@@ -28,7 +28,7 @@ fig
 ```
 
 ```@raw html
-<img src="assets/examples/basic.png" alt="Basic Example" style="max-width: 600px;"/>
+<img src="../assets/examples/basic.png" alt="Basic Example" style="max-width: 600px;"/>
 ```
 
 **What this shows:** This is the default chord diagram with standard settings. Labels are arranged around the circle grouped by their category (V, D, J), and ribbons connect labels that co-occur. Ribbon thickness represents the co-occurrence frequency. Colors are assigned by group (each category gets a distinct color), and all ribbons use uniform opacity. This is the simplest way to visualize co-occurrence relationships.

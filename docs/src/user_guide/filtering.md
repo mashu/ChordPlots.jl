@@ -41,7 +41,7 @@ chordplot!(ax, cooc;
 This removes both the arc and its label, reducing clutter.
 
 ```@raw html
-<img src="assets/examples/filtered.png" alt="Filtered Data" style="max-width: 600px;"/>
+<img src="../assets/examples/filtered.png" alt="Filtered Data" style="max-width: 600px;"/>
 ```
 
 **What this shows:** Filtering helps focus attention on the strongest relationships and is particularly useful when working with large datasets where many labels have only weak connections that would otherwise create visual clutter.

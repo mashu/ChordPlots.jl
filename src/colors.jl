@@ -139,97 +139,53 @@ function modern_palette()::Vector{RGB{Float64}}
     ]
 end
 
-"""
-    get_colors_for_count(n::Int) -> Vector{RGB{Float64}}
-
-Returns n colors from the modern palette, cycling if needed.
-"""
-function get_colors_for_count(n::Int)::Vector{RGB{Float64}}
-    palette = modern_palette()
-    if n <= length(palette)
-        return palette[1:n]
-    else
-        # Cycle through palette if we need more colors
-        result = RGB{Float64}[]
-        for i in 1:n
-            push!(result, palette[mod1(i, length(palette))])
-        end
-        return result
-    end
-end
-
 #==============================================================================#
 # Color Scheme Construction
 #==============================================================================#
 
 """
+    palette_colors(palette::Symbol) -> Vector{RGB{Float64}}
+
+Return the base palette for a given symbol. `:default` is the Wong colorblind-friendly
+palette (same as Makie/AlgebraOfGraphics); `:modern` is a curated alternative.
+"""
+function palette_colors(palette::Symbol)
+    palette === :default && return wong_palette()
+    palette === :modern && return modern_palette()
+    throw(ArgumentError("palette must be :default or :modern, got $palette"))
+end
+
+"""
+    take_n_colors(palette::Vector{RGB{Float64}}, n::Int) -> Vector{RGB{Float64}}
+
+Return `n` colors from `palette`, cycling if `n` exceeds the palette length.
+"""
+function take_n_colors(palette::Vector{RGB{Float64}}, n::Int)
+    [palette[mod1(i, length(palette))] for i in 1:n]
+end
+
+"""
     group_colors(cooc::AbstractChordData; palette=:default)
 
-Create a color scheme based on groups using Makie's default categorical palette
-(same as AlgebraOfGraphics uses - Wong colors, colorblind-friendly).
-
-# Arguments
-- `palette::Symbol`: Color palette style (`:default` for Makie/AoG palette, `:modern` for custom)
+Create a color scheme based on groups. `palette = :default` uses the Wong colorblind-friendly
+palette (same as Makie/AlgebraOfGraphics); `:modern` uses a curated alternative.
 """
 function group_colors(cooc::AbstractChordData; palette::Symbol = :default)
-    n_groups = ngroups(cooc)
-    
-    if palette == :default
-        # Use Wong's colorblind-friendly palette (same as Makie/AoG default)
-        # This gives us eye-catching but not garish, professional colors
-        wong = wong_palette()
-        colors = wong[1:min(n_groups, length(wong))]
-        # If we need more colors, cycle through the palette
-        if n_groups > length(colors)
-            for i in (length(colors)+1):n_groups
-                push!(colors, wong[mod1(i, length(wong))])
-            end
-        end
-    else
-        # Fallback to modern palette
-        colors = get_colors_for_count(n_groups)
-    end
-    
-    group_color_dict = Dict{Symbol, RGB{Float64}}()
-    for (i, group) in enumerate(cooc.groups)
-        # Convert to RGB if needed
-        c = colors[i]
-        if c isa RGB
-            group_color_dict[group.name] = c
-        else
-            group_color_dict[group.name] = RGB(c)
-        end
-    end
-    
-    # Modern neutral gray for defaults
-    GroupColorScheme(group_color_dict, RGB(0.4, 0.4, 0.4))
+    colors = take_n_colors(palette_colors(palette), ngroups(cooc))
+    group_color_dict = Dict{Symbol, RGB{Float64}}(
+        g.name => RGB{Float64}(colors[i]) for (i, g) in enumerate(cooc.groups)
+    )
+    GroupColorScheme(group_color_dict, RGB{Float64}(0.4, 0.4, 0.4))
 end
 
 """
     categorical_colors(n::Int; palette=:default)
 
-Create n distinguishable colors using Makie's default categorical palette
-(same as AlgebraOfGraphics uses - Wong colors, colorblind-friendly).
-
-# Arguments
-- `palette::Symbol`: Color palette style (`:default` for Makie/AoG palette, `:modern` for custom)
+Create `n` distinguishable colors. `palette = :default` uses the Wong colorblind-friendly
+palette (same as Makie/AlgebraOfGraphics); `:modern` uses a curated alternative.
 """
 function categorical_colors(n::Int; palette::Symbol = :default)
-    if palette == :default
-        # Use Wong's colorblind-friendly palette (same as Makie/AoG default)
-        wong = wong_palette()
-        colors = wong[1:min(n, length(wong))]
-        # If we need more colors, cycle through the palette
-        if n > length(colors)
-            for i in (length(colors)+1):n
-                push!(colors, wong[mod1(i, length(wong))])
-            end
-        end
-        CategoricalColorScheme(colors)
-    else
-        colors = get_colors_for_count(n)
-        CategoricalColorScheme(colors)
-    end
+    CategoricalColorScheme(take_n_colors(palette_colors(palette), n))
 end
 
 """
@@ -244,6 +200,9 @@ function gradient_colors(;
 )
     GradientColorScheme(colormap, (min_val, max_val))
 end
+
+coerce_color(c::Colorant) = c
+coerce_color(s::Symbol) = parse(Colorant, string(s))
 
 """
     diverging_colors(cooc::AbstractChordData; negative=:steelblue, neutral=:white, positive=:firebrick, symmetric=true)
@@ -272,15 +231,14 @@ fig, ax, plt = chordplot(cooc_signed; colorscheme=diverging_colors(cooc_signed))
 """
 function diverging_colors(
     cooc::AbstractChordData;
-    negative::Union{Colorant, Symbol} = RGB(0.27, 0.51, 0.71),  # steelblue
-    neutral::Union{Colorant, Symbol} = RGB(0.97, 0.97, 0.97),   # near-white
-    positive::Union{Colorant, Symbol} = RGB(0.70, 0.13, 0.13),  # firebrick
+    negative = RGB(0.27, 0.51, 0.71),  # steelblue
+    neutral  = RGB(0.97, 0.97, 0.97),  # near-white
+    positive = RGB(0.70, 0.13, 0.13),  # firebrick
     symmetric::Bool = true
 )
-    # Convert symbols to colors if needed
-    neg_c = negative isa Symbol ? parse(Colorant, string(negative)) : negative
-    neu_c = neutral isa Symbol ? parse(Colorant, string(neutral)) : neutral
-    pos_c = positive isa Symbol ? parse(Colorant, string(positive)) : positive
+    neg_c = coerce_color(negative)
+    neu_c = coerce_color(neutral)
+    pos_c = coerce_color(positive)
     
     # Get value range from matrix (includes both ribbon values and net flows for arcs)
     n = nlabels(cooc)

@@ -200,7 +200,19 @@ end
 
 Base.size(c::AbstractChordData) = size(c.matrix)
 Base.length(c::AbstractChordData) = length(c.labels)
+
+"""
+    nlabels(c::AbstractChordData) -> Int
+
+Number of labels in the chord data.
+"""
 nlabels(c::AbstractChordData) = length(c.labels)
+
+"""
+    ngroups(c::AbstractChordData) -> Int
+
+Number of groups in the chord data.
+"""
 ngroups(c::AbstractChordData) = length(c.groups)
 
 function Base.getindex(c::AbstractChordData, label1::AbstractString, label2::AbstractString)
@@ -210,6 +222,12 @@ function Base.getindex(c::AbstractChordData, label1::AbstractString, label2::Abs
 end
 Base.getindex(c::AbstractChordData, i::Int, j::Int) = c.matrix[i, j]
 
+"""
+    total_flow(c::AbstractChordData, label) -> Real
+
+Sum of `c.matrix` values in the row of `label` (an index or a label string).
+For signed matrices the result is signed; use [`abs_total_flow`](@ref) for sizing.
+"""
 function total_flow(c::AbstractChordData, label_idx::Int)
     sum(@view c.matrix[label_idx, :])
 end
@@ -237,13 +255,6 @@ Number of matrix layers (third index of `c.layers`, e.g. one per donor).
 """
 n_layers(c::CoOccurrenceLayers) = size(c.layers, 3)
 
-function abs_total_flow(c::CoOccurrenceLayers, label_idx::Int)
-    sum(abs, @view c.matrix[label_idx, :])
-end
-function abs_total_flow(c::CoOccurrenceLayers, label::AbstractString)
-    abs_total_flow(c, c.label_to_index[label])
-end
-
 function diverging_pairwise_ribbon_values(cooc::AbstractChordData)
     n = nlabels(cooc)
     vals = Float64[]
@@ -268,13 +279,18 @@ function diverging_pairwise_ribbon_values(cooc::CoOccurrenceLayers)
     vals
 end
 
+"""
+    get_group(c::AbstractChordData, label_idx::Int) -> Symbol
+
+Return the group name containing the label at `label_idx`.
+"""
 function get_group(c::AbstractChordData, label_idx::Int)::Symbol
     for g in c.groups
         if label_idx in g.indices
             return g.name
         end
     end
-    error("Label index $label_idx not found in any group")
+    throw(ArgumentError("Label index $label_idx not found in any group"))
 end
 
 #==============================================================================#
@@ -299,7 +315,18 @@ struct ArcSegment{T<:Real} <: AbstractGeometry
     value::T
 end
 
+"""
+    arc_span(a::ArcSegment) -> Real
+
+Angular span (`end_angle - start_angle`) of an arc segment.
+"""
 arc_span(a::ArcSegment) = a.end_angle - a.start_angle
+
+"""
+    arc_midpoint(a::ArcSegment) -> Real
+
+Angular midpoint of an arc segment.
+"""
 arc_midpoint(a::ArcSegment) = (a.start_angle + a.end_angle) / 2
 
 """
@@ -318,7 +345,18 @@ struct RibbonEndpoint{T<:Real}
     end_angle::T
 end
 
+"""
+    endpoint_span(e::RibbonEndpoint) -> Real
+
+Angular span (`end_angle - start_angle`) of a ribbon endpoint.
+"""
 endpoint_span(e::RibbonEndpoint) = e.end_angle - e.start_angle
+
+"""
+    endpoint_midpoint(e::RibbonEndpoint) -> Real
+
+Angular midpoint of a ribbon endpoint.
+"""
 endpoint_midpoint(e::RibbonEndpoint) = (e.start_angle + e.end_angle) / 2
 
 """
@@ -337,7 +375,11 @@ struct Ribbon{T<:Real} <: AbstractGeometry
     value::T
 end
 
-# Self-loop detection
+"""
+    is_self_loop(r::Ribbon) -> Bool
+
+`true` when source and target endpoints share the same label index.
+"""
 is_self_loop(r::Ribbon) = r.source.label_idx == r.target.label_idx
 
 #==============================================================================#
@@ -364,7 +406,18 @@ struct ChordLayout{T<:Real} <: AbstractLayout
     gap_angle::T
 end
 
+"""
+    narcs(l::ChordLayout) -> Int
+
+Number of arc segments in the layout.
+"""
 narcs(l::ChordLayout) = length(l.arcs)
+
+"""
+    nribbons(l::ChordLayout) -> Int
+
+Number of ribbons in the layout.
+"""
 nribbons(l::ChordLayout) = length(l.ribbons)
 
 #==============================================================================#
@@ -467,18 +520,20 @@ struct ValueScaling
     end
 end
 
-# Normalize components to (ribbons, arcs, labels); accept named or positional tuple
-function _components_tuple(c)
-    if c isa NamedTuple
-        haskey(c, :ribbons) && haskey(c, :arcs) && haskey(c, :labels) ||
-            throw(ArgumentError("components as NamedTuple must have keys :ribbons, :arcs, :labels"))
-        return (c.ribbons, c.arcs, c.labels)
-    elseif c isa Tuple && length(c) == 3
-        return (Bool(c[1]), Bool(c[2]), Bool(c[3]))
-    else
-        throw(ArgumentError("components must be (ribbons, arcs, labels) or (ribbons=..., arcs=..., labels=...)"))
-    end
+# Normalize components to (ribbons, arcs, labels); accept named or positional tuple via dispatch.
+function components_tuple(c::NamedTuple)
+    haskey(c, :ribbons) && haskey(c, :arcs) && haskey(c, :labels) ||
+        throw(ArgumentError("components as NamedTuple must have keys :ribbons, :arcs, :labels"))
+    (Bool(c.ribbons), Bool(c.arcs), Bool(c.labels))
 end
+
+function components_tuple(c::Tuple{Any, Any, Any})
+    (Bool(c[1]), Bool(c[2]), Bool(c[3]))
+end
+
+components_tuple(c) = throw(ArgumentError(
+    "components must be (ribbons, arcs, labels) or (ribbons=..., arcs=..., labels=...)"
+))
 
 # Convenience constructors
 function ValueScaling(;
@@ -487,7 +542,7 @@ function ValueScaling(;
     min_alpha::Real = 0.1,
     scale::Symbol = :linear
 )
-    r, a, l = _components_tuple(components)
+    r, a, l = components_tuple(components)
     ValueScaling(enabled, r, a, l, min_alpha, scale)
 end
 
