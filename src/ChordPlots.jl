@@ -17,8 +17,7 @@ using CairoMakie, ChordPlots
 matrix = [0 3 1;
           3 0 2;
           1 2 0]
-labels = ["A", "B", "C"]
-groups = [GroupInfo{String}(:G, labels, 1:3)]
+labels, groups = groups_from((:G => ["A", "B", "C"]))
 cooc = CoOccurrenceMatrix(matrix, labels, groups)
 fig, ax, plt = chordplot(cooc)
 setup_chord_axis!(ax)
