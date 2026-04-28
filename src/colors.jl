@@ -87,21 +87,20 @@ end
 """
     wong_palette() -> Vector{RGB{Float64}}
 
-Returns Wong's colorblind-friendly palette (same as Makie/AoG default).
-These are eye-catching but not garish, professional colors.
+Wong's colorblind-friendly palette (also used by Makie / AlgebraOfGraphics).
+Reference: Wong, B. (2011). *Points of view: Color blindness.* Nature Methods, 8(6), 441.
+The original palette has seven distinct hues (`Bluish Green` was a duplicate of
+`Green` and is omitted here so the cycle never produces two identical entries).
 """
 function wong_palette()::Vector{RGB{Float64}}
-    # Wong's colorblind-friendly palette (same as Makie/AoG uses)
-    # From: Wong, B. (2011). Points of view: Color blindness. Nature Methods, 8(6), 441.
     [
-        RGB(0.0, 0.4470588235294118, 0.6980392156862745),    # Blue
-        RGB(0.0, 0.6196078431372549, 0.45098039215686275),    # Green
-        RGB(0.8352941176470589, 0.3686274509803922, 0.0),     # Orange
-        RGB(0.8, 0.47450980392156861, 0.6549019607843137),     # Pink
-        RGB(0.9411764705882353, 0.8941176470588236, 0.25882352941176473), # Yellow
-        RGB(0.33725490196078434, 0.7058823529411765, 0.9137254901960784), # Sky Blue
-        RGB(0.0, 0.6196078431372549, 0.45098039215686275),    # Bluish Green
-        RGB(0.9019607843137255, 0.6235294117647059, 0.0),     # Vermillion
+        RGB(0.0,                 0.4470588235294118,  0.6980392156862745),  # Blue
+        RGB(0.0,                 0.6196078431372549,  0.45098039215686275), # Green
+        RGB(0.8352941176470589,  0.3686274509803922,  0.0),                  # Orange
+        RGB(0.8,                 0.47450980392156861, 0.6549019607843137),   # Pink
+        RGB(0.9411764705882353,  0.8941176470588236,  0.25882352941176473),  # Yellow
+        RGB(0.33725490196078434, 0.7058823529411765,  0.9137254901960784),   # Sky Blue
+        RGB(0.9019607843137255,  0.6235294117647059,  0.0),                  # Vermillion
     ]
 end
 
@@ -158,10 +157,23 @@ end
 """
     take_n_colors(palette::Vector{RGB{Float64}}, n::Int) -> Vector{RGB{Float64}}
 
-Return `n` colors from `palette`, cycling if `n` exceeds the palette length.
+Return `n` colors. When `n` fits inside `palette`, return the prefix unchanged.
+When `n` exceeds the palette, append perceptually distinguishable colors via
+`Colors.distinguishable_colors` instead of cycling (cycling repeats the same
+hues for too many groups, which makes adjacent arcs ambiguous).
 """
 function take_n_colors(palette::Vector{RGB{Float64}}, n::Int)
-    [palette[mod1(i, length(palette))] for i in 1:n]
+    n <= length(palette) && return palette[1:n]
+    # `distinguishable_colors(n, seed)` returns `n` colors with the seed colors as the first
+    # `length(seed)` entries; the remainder are perceptually maximally distinct from them.
+    extended = distinguishable_colors(
+        n,
+        palette;
+        lchoices = range(40, stop = 80, length = 8),
+        cchoices = range(40, stop = 90, length = 8),
+        hchoices = range(0, stop = 340, length = 12),
+    )
+    [RGB{Float64}(c) for c in extended]
 end
 
 """
@@ -373,6 +385,30 @@ function resolve_arc_color(
     # This shows which labels are overall enriched (positive/red) vs depleted (negative/blue)
     net_flow = total_flow(cooc, arc.label_idx)
     diverging_color(scheme, net_flow)
+end
+
+"""
+    gradient_color(scheme::GradientColorScheme, value::Real) -> RGB
+
+Sample `Makie.cgrad(scheme.colormap)` at the value's normalised position in `scheme.range`.
+"""
+function gradient_color(scheme::GradientColorScheme, value::Real)
+    lo, hi = scheme.range
+    t = hi > lo ? clamp((Float64(value) - lo) / (hi - lo), 0.0, 1.0) : 0.5
+    RGB{Float64}(Makie.cgrad(scheme.colormap)[t])
+end
+
+function resolve_arc_color(scheme::GradientColorScheme, arc::ArcSegment, cooc::AbstractChordData)
+    gradient_color(scheme, total_flow(cooc, arc.label_idx))
+end
+
+function resolve_ribbon_color(
+    scheme::GradientColorScheme,
+    ribbon::Ribbon,
+    cooc::AbstractChordData;
+    blend::Bool = true,  # ignored — colour is by value
+)
+    gradient_color(scheme, ribbon.value)
 end
 
 """

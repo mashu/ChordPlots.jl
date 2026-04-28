@@ -301,10 +301,10 @@ end
 """
     apply_min_arc_flow(cooc, min_flow) -> (filtered_cooc, keep_indices)
 
-If `min_flow > 0`, drop low-flow labels: for `CoOccurrenceMatrix` the criterion is
-the **signed** row sum (`total_flow`); for `CoOccurrenceLayers` it is
-the **absolute** row sum over all layers (`abs_total_flow`, matching
-`compute_layout`).
+If `min_flow > 0`, drop labels whose absolute row sum is below `min_flow`.
+Uses `abs_total_flow` for both `CoOccurrenceMatrix` and `CoOccurrenceLayers`
+so that signed/diff matrices behave like their magnitudes (a label whose
+positive and negative entries cancel is still kept if it is well-connected).
 
 Returns the subsetted chord data and `keep_indices` (`nothing` if nothing was removed), a
 `Vector{Int}` of original label indices into the input `cooc`.
@@ -313,7 +313,7 @@ function apply_min_arc_flow(cooc::AbstractChordData, min_flow::Real)
     if min_flow <= 0
         return cooc, nothing
     end
-    flows = [total_flow(cooc, i) for i in 1:nlabels(cooc)]
+    flows = [abs_total_flow(cooc, i) for i in 1:nlabels(cooc)]
     keep_indices = Int[i for i in 1:nlabels(cooc) if flows[i] >= min_flow]
     if length(keep_indices) == nlabels(cooc)
         return cooc, nothing
@@ -864,4 +864,39 @@ function setup_chord_axis!(ax::Axis; outer_radius::Real = 1.0, label_offset::Rea
     limit = Float64(outer_radius) + Float64(label_offset) + Float64(padding)
     limits!(ax, -limit, limit, -limit, limit)
     ax
+end
+
+"""
+    chord_theme(; fontsize=14, background=:white) -> Theme
+
+Return a Makie `Theme` tuned for chord-diagram figures: clean white (or transparent)
+background, no grid, no spines, modest figure padding. Apply once per session with
+`set_theme!(chord_theme())` to remove the boilerplate that otherwise repeats on
+every example.
+
+# Example
+```julia
+using CairoMakie, ChordPlots
+set_theme!(chord_theme())
+
+fig, ax, plt = chordplot(cooc)
+setup_chord_axis!(ax)
+fig
+```
+"""
+function chord_theme(; fontsize::Real = 14, background = :white)
+    Theme(
+        fontsize = fontsize,
+        figure_padding = (12, 12, 12, 12),
+        backgroundcolor = background,
+        Axis = (
+            backgroundcolor = :transparent,
+            xgridvisible = false,
+            ygridvisible = false,
+            leftspinevisible = false,
+            rightspinevisible = false,
+            topspinevisible = false,
+            bottomspinevisible = false,
+        ),
+    )
 end

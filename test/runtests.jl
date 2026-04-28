@@ -64,7 +64,7 @@ using Colors
         labels = ["A", "B"]
         groups = [GroupInfo{String}(:G, labels, 1:2)]
         cooc = CoOccurrenceLayers(layers, labels, groups)
-        @test n_layers(cooc) == 2
+        @test nlayers(cooc) == 2
         @test cooc[1, 2] ≈ 0.6
         @test abs_total_flow(cooc, 1) ≈ 0.6
         layout = compute_layout(cooc)
@@ -241,27 +241,27 @@ using Colors
             src = RibbonEndpoint{Float64}(1, 0.1, 0.3)
             tgt = RibbonEndpoint{Float64}(2, 2.0, 2.2)
             ribbon = Ribbon{Float64}(src, tgt, 10.0)
-            at_zero = ribbon_for_envelope_draw(ribbon, 0.0)
+            at_zero = ChordPlots.ribbon_for_envelope_draw(ribbon, 0.0)
             @test endpoint_span(at_zero.source) ≈ endpoint_span(ribbon.source)
             # scale = 1 + span / (2|m|)  →  span=20, m=10  →  factor 2
-            twox = ribbon_for_envelope_draw(ribbon, 20.0)
+            twox = ChordPlots.ribbon_for_envelope_draw(ribbon, 20.0)
             @test endpoint_span(twox.source) ≈ 2 * endpoint_span(ribbon.source)
             # span=60, m=10 → 1 + 3 = 4
-            fourx = ribbon_for_envelope_draw(ribbon, 60.0)
+            fourx = ChordPlots.ribbon_for_envelope_draw(ribbon, 60.0)
             @test endpoint_span(fourx.source) ≈ 4 * endpoint_span(ribbon.source)
             # Small span: minimum extra angular width (1.15) applies when 1+span/2m would be below that
-            tight = ribbon_for_envelope_draw(ribbon, 1.0)  # raw 1+1/20; floor 1.15
+            tight = ChordPlots.ribbon_for_envelope_draw(ribbon, 1.0)  # raw 1+1/20; floor 1.15
             @test endpoint_span(tight.source) ≈ 1.15 * endpoint_span(ribbon.source)
-            @test_throws ArgumentError ribbon_for_envelope_draw(ribbon, -0.1)
+            @test_throws ArgumentError ChordPlots.ribbon_for_envelope_draw(ribbon, -0.1)
         end
-        
+
         @testset "envelope_widen_scale matches envelope ribbon" begin
             src = RibbonEndpoint{Float64}(1, 0.1, 0.3)
             tgt = RibbonEndpoint{Float64}(2, 2.0, 2.2)
             ribbon = Ribbon{Float64}(src, tgt, 10.0)
-            s = envelope_widen_scale(ribbon, 9.0)
-            rw = ribbon_widened(ribbon, s)
-            re = ribbon_for_envelope_draw(ribbon, 9.0)
+            s = ChordPlots.envelope_widen_scale(ribbon, 9.0)
+            rw = ChordPlots.ribbon_widened(ribbon, s)
+            re = ChordPlots.ribbon_for_envelope_draw(ribbon, 9.0)
             @test rw.source.start_angle == re.source.start_angle
         end
 
@@ -269,10 +269,10 @@ using Colors
             src = RibbonEndpoint{Float64}(1, 0.1, 0.3)
             tgt = RibbonEndpoint{Float64}(2, 2.0, 2.2)
             ribbon = Ribbon{Float64}(src, tgt, 10.0)
-            wide = ribbon_for_envelope_draw(ribbon, 20.0)
+            wide = ChordPlots.ribbon_for_envelope_draw(ribbon, 20.0)
             p_m = ribbon_path(ribbon, 0.8; n_bezier = 20)
             p_w = ribbon_path(wide, 0.8; n_bezier = 20)
-            ring = ribbon_envelope_ring_polygon(p_m, p_w)
+            ring = ChordPlots.ribbon_envelope_ring_polygon(p_m, p_w)
             @test !isempty(ring.interiors)
         end
         
@@ -416,29 +416,116 @@ using Colors
             matrix = [1 0; 0 1]
             labels = ["x", "y"]
             groups = [GroupInfo{String}(:G, labels, 1:2)]
-            
+
             cooc = CoOccurrenceMatrix(matrix, labels, groups)
             layout = compute_layout(cooc)
-            
+
             # Should still produce valid layout
             @test narcs(layout) == 2
         end
     end
-    
+
+    @testset "groups_from helper" begin
+        labels, groups = groups_from((:V => ["V1", "V2", "V3"], :D => ["D1", "D2"], :J => ["J1"]))
+        @test labels == ["V1", "V2", "V3", "D1", "D2", "J1"]
+        @test length(groups) == 3
+        @test groups[1].name === :V && groups[1].indices == 1:3
+        @test groups[2].name === :D && groups[2].indices == 4:5
+        @test groups[3].name === :J && groups[3].indices == 6:6
+
+        # Round-trip with CoOccurrenceMatrix
+        matrix = zeros(Int, length(labels), length(labels))
+        cooc = CoOccurrenceMatrix(matrix, labels, groups)
+        @test ngroups(cooc) == 3
+    end
+
+    @testset "Recipe smoke tests" begin
+        using CairoMakie
+        labels, groups = groups_from((:V => ["V1", "V2"], :D => ["D1", "D2"], :J => ["J1"]))
+        matrix = [0 2 1 0 0;
+                  2 0 0 1 0;
+                  1 0 0 2 1;
+                  0 1 2 0 3;
+                  0 0 1 3 0]
+        cooc = CoOccurrenceMatrix(matrix, labels, groups)
+
+        for kw in (
+            (;),
+            (colorscheme = :categorical,),
+            (colorscheme = gradient_colors(min_val = 0.0, max_val = 5.0),),
+            (alpha = 0.6,),
+            (alpha = ComponentAlpha(0.5, 0.9, 1.0),),
+            (alpha_by_value = true,),
+            (alpha_by_value = ValueScaling(enabled = true,
+                                           components = (ribbons = true, arcs = false, labels = false)),),
+            (focus_group = :V, focus_labels = ["V1"]),
+            (sort_by = :value,),
+            (label_order = labels,),
+            (min_ribbon_value = 1.5,),
+            (min_arc_flow = 2.0,),
+        )
+            fig = Figure(size = (300, 300))
+            ax = Axis(fig[1, 1])
+            chordplot!(ax, cooc; kw...)
+            setup_chord_axis!(ax)
+            @test fig isa Figure
+        end
+
+        # Signed weights with diverging scheme
+        signed = [0.0 0.4 -0.1 0.0 0.0;
+                  0.4 0.0 0.0 -0.2 0.0;
+                  -0.1 0.0 0.0 0.3 0.1;
+                  0.0 -0.2 0.3 0.0 0.5;
+                  0.0 0.0 0.1 0.5 0.0]
+        scooc = CoOccurrenceMatrix(signed, labels, groups)
+        fig, ax, _ = chordplot(scooc; colorscheme = diff_colors(scooc))
+        @test fig isa Figure
+
+        # Layered with stacked decomposition
+        L = 3
+        layers_arr = zeros(Float64, length(labels), length(labels), L)
+        for ℓ in 1:L
+            layers_arr[:, :, ℓ] .= matrix .* (0.5 + 0.2 * ℓ)
+        end
+        clay = CoOccurrenceLayers(layers_arr, labels, groups; aggregate = :sum)
+        fig, ax, _ = chordplot(clay; layers_pair_span = :stack_layers)
+        @test fig isa Figure
+    end
+
+    @testset "chord_theme" begin
+        t = chord_theme()
+        @test t isa Theme
+    end
+
     @testset "Type Stability" begin
         matrix = [0 1; 1 0]
         labels = ["a", "b"]
         groups = [GroupInfo{String}(:G, labels, 1:2)]
         cooc = CoOccurrenceMatrix(matrix, labels, groups)
-        
+
         # These should not throw type instability warnings
         @inferred nlabels(cooc)
         @inferred ngroups(cooc)
         @inferred total_flow(cooc, 1)
-        
+
         layout = compute_layout(cooc)
         @inferred narcs(layout)
         @inferred nribbons(layout)
+    end
+
+    @testset "Show methods" begin
+        matrix = [0 2; 2 0]
+        labels = ["a", "b"]
+        groups = [GroupInfo{String}(:G, labels, 1:2)]
+        cooc = CoOccurrenceMatrix(matrix, labels, groups)
+        s = sprint(show, MIME"text/plain"(), cooc)
+        @test occursin("CoOccurrenceMatrix", s)
+        @test occursin(":G", s)
+
+        layout = compute_layout(cooc)
+        s = sprint(show, MIME"text/plain"(), layout)
+        @test occursin("ChordLayout", s)
+        @test occursin("arcs", s)
     end
 end
 

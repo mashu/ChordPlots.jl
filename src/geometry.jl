@@ -179,13 +179,12 @@ end
 """
     ribbon_path(ribbon::Ribbon, radius::Real; n_bezier::Int=30, tension::Real=0.5)
 
-Generate the path for a ribbon connecting two arcs.
+Generate the closed path for a ribbon connecting two arcs as
+source-arc → Bezier → target-arc → Bezier (back to start).
 
-The ribbon consists of:
-1. Source arc segment
-2. Bezier curve to target
-3. Target arc segment  
-4. Bezier curve back to source
+Diagonal entries of the input weight matrix are dropped during layout,
+so self-loops are not currently rendered (`is_self_loop(ribbon)` is provided
+as a check for downstream consumers).
 
 # Arguments
 - `ribbon`: Ribbon geometry specification
@@ -197,68 +196,28 @@ function ribbon_path(
     ribbon::Ribbon{T},
     radius::Real;
     n_bezier::Int = 30,
-    tension::Real = 0.5
+    tension::Real = 0.5,
 )::RibbonPath where T
-    
     src = ribbon.source
     tgt = ribbon.target
-    
-    # Source arc endpoints
+
     src_start = angle_to_point(src.start_angle, radius)
-    src_end = angle_to_point(src.end_angle, radius)
-    
-    # Target arc endpoints  
+    src_end   = angle_to_point(src.end_angle,   radius)
     tgt_start = angle_to_point(tgt.start_angle, radius)
-    tgt_end = angle_to_point(tgt.end_angle, radius)
-    
-    # Control points for Bezier curves (toward center with tension)
-    center = Point2f(0, 0)
+    tgt_end   = angle_to_point(tgt.end_angle,   radius)
+
     ctrl_factor = radius * (1 - tension)
-    
-    # Control points for source→target curve
-    src_end_ctrl = Point2f(
-        ctrl_factor * cos(src.end_angle),
-        ctrl_factor * sin(src.end_angle)
-    )
-    tgt_start_ctrl = Point2f(
-        ctrl_factor * cos(tgt.start_angle),
-        ctrl_factor * sin(tgt.start_angle)
-    )
-    
-    # Control points for target→source curve
-    tgt_end_ctrl = Point2f(
-        ctrl_factor * cos(tgt.end_angle),
-        ctrl_factor * sin(tgt.end_angle)
-    )
-    src_start_ctrl = Point2f(
-        ctrl_factor * cos(src.start_angle),
-        ctrl_factor * sin(src.start_angle)
-    )
-    
-    # Build path
+    src_end_ctrl   = Point2f(ctrl_factor * cos(src.end_angle),   ctrl_factor * sin(src.end_angle))
+    tgt_start_ctrl = Point2f(ctrl_factor * cos(tgt.start_angle), ctrl_factor * sin(tgt.start_angle))
+    tgt_end_ctrl   = Point2f(ctrl_factor * cos(tgt.end_angle),   ctrl_factor * sin(tgt.end_angle))
+    src_start_ctrl = Point2f(ctrl_factor * cos(src.start_angle), ctrl_factor * sin(src.start_angle))
+
     path = Point2f[]
-    
-    # 1. Source arc (from start to end)
-    if is_self_loop(ribbon)
-        # Self-loop: draw two separate bezier curves meeting at center
-        append!(path, arc_points(src.start_angle, src.end_angle, radius; n_points=n_bezier÷2))
-        # Bezier to center and back
-        mid_ctrl = Point2f(0, 0)
-        src_mid = angle_to_point((src.start_angle + src.end_angle) / 2, radius)
-        append!(path, cubic_bezier_points(src_end, tgt_start_ctrl, src_end_ctrl, src_start; n_points=n_bezier))
-    else
-        append!(path, arc_points(src.start_angle, src.end_angle, radius; n_points=n_bezier÷2))
-        
-        # 2. Bezier from source end to target start
-        append!(path, cubic_bezier_points(src_end, src_end_ctrl, tgt_start_ctrl, tgt_start; n_points=n_bezier))
-        
-        # 3. Target arc (from start to end)
-        append!(path, arc_points(tgt.start_angle, tgt.end_angle, radius; n_points=n_bezier÷2))
-        
-        # 4. Bezier from target end back to source start
-        append!(path, cubic_bezier_points(tgt_end, tgt_end_ctrl, src_start_ctrl, src_start; n_points=n_bezier))
-    end
-    
+    append!(path, arc_points(src.start_angle, src.end_angle, radius; n_points = n_bezier ÷ 2))
+    append!(path, cubic_bezier_points(src_end, src_end_ctrl, tgt_start_ctrl, tgt_start; n_points = n_bezier))
+    append!(path, arc_points(tgt.start_angle, tgt.end_angle, radius; n_points = n_bezier ÷ 2))
+    append!(path, cubic_bezier_points(tgt_end, tgt_end_ctrl, src_start_ctrl, src_start; n_points = n_bezier))
+
     RibbonPath(path, src.label_idx, tgt.label_idx)
 end
 
