@@ -64,7 +64,7 @@ using Colors
         labels = ["A", "B"]
         groups = [GroupInfo{String}(:G, labels, 1:2)]
         cooc = CoOccurrenceLayers(layers, labels, groups)
-        @test n_layers(cooc) == 2
+        @test nlayers(cooc) == 2
         @test cooc[1, 2] ≈ 0.6
         @test abs_total_flow(cooc, 1) ≈ 0.6
         layout = compute_layout(cooc)
@@ -241,27 +241,27 @@ using Colors
             src = RibbonEndpoint{Float64}(1, 0.1, 0.3)
             tgt = RibbonEndpoint{Float64}(2, 2.0, 2.2)
             ribbon = Ribbon{Float64}(src, tgt, 10.0)
-            at_zero = ribbon_for_envelope_draw(ribbon, 0.0)
+            at_zero = ChordPlots.ribbon_for_envelope_draw(ribbon, 0.0)
             @test endpoint_span(at_zero.source) ≈ endpoint_span(ribbon.source)
             # scale = 1 + span / (2|m|)  →  span=20, m=10  →  factor 2
-            twox = ribbon_for_envelope_draw(ribbon, 20.0)
+            twox = ChordPlots.ribbon_for_envelope_draw(ribbon, 20.0)
             @test endpoint_span(twox.source) ≈ 2 * endpoint_span(ribbon.source)
             # span=60, m=10 → 1 + 3 = 4
-            fourx = ribbon_for_envelope_draw(ribbon, 60.0)
+            fourx = ChordPlots.ribbon_for_envelope_draw(ribbon, 60.0)
             @test endpoint_span(fourx.source) ≈ 4 * endpoint_span(ribbon.source)
             # Small span: minimum extra angular width (1.15) applies when 1+span/2m would be below that
-            tight = ribbon_for_envelope_draw(ribbon, 1.0)  # raw 1+1/20; floor 1.15
+            tight = ChordPlots.ribbon_for_envelope_draw(ribbon, 1.0)  # raw 1+1/20; floor 1.15
             @test endpoint_span(tight.source) ≈ 1.15 * endpoint_span(ribbon.source)
-            @test_throws ArgumentError ribbon_for_envelope_draw(ribbon, -0.1)
+            @test_throws ArgumentError ChordPlots.ribbon_for_envelope_draw(ribbon, -0.1)
         end
-        
+
         @testset "envelope_widen_scale matches envelope ribbon" begin
             src = RibbonEndpoint{Float64}(1, 0.1, 0.3)
             tgt = RibbonEndpoint{Float64}(2, 2.0, 2.2)
             ribbon = Ribbon{Float64}(src, tgt, 10.0)
-            s = envelope_widen_scale(ribbon, 9.0)
-            rw = ribbon_widened(ribbon, s)
-            re = ribbon_for_envelope_draw(ribbon, 9.0)
+            s = ChordPlots.envelope_widen_scale(ribbon, 9.0)
+            rw = ChordPlots.ribbon_widened(ribbon, s)
+            re = ChordPlots.ribbon_for_envelope_draw(ribbon, 9.0)
             @test rw.source.start_angle == re.source.start_angle
         end
 
@@ -269,10 +269,10 @@ using Colors
             src = RibbonEndpoint{Float64}(1, 0.1, 0.3)
             tgt = RibbonEndpoint{Float64}(2, 2.0, 2.2)
             ribbon = Ribbon{Float64}(src, tgt, 10.0)
-            wide = ribbon_for_envelope_draw(ribbon, 20.0)
+            wide = ChordPlots.ribbon_for_envelope_draw(ribbon, 20.0)
             p_m = ribbon_path(ribbon, 0.8; n_bezier = 20)
             p_w = ribbon_path(wide, 0.8; n_bezier = 20)
-            ring = ribbon_envelope_ring_polygon(p_m, p_w)
+            ring = ChordPlots.ribbon_envelope_ring_polygon(p_m, p_w)
             @test !isempty(ring.interiors)
         end
         
@@ -416,29 +416,422 @@ using Colors
             matrix = [1 0; 0 1]
             labels = ["x", "y"]
             groups = [GroupInfo{String}(:G, labels, 1:2)]
-            
+
             cooc = CoOccurrenceMatrix(matrix, labels, groups)
             layout = compute_layout(cooc)
-            
+
             # Should still produce valid layout
             @test narcs(layout) == 2
         end
     end
-    
+
+    @testset "groups_from helper" begin
+        labels, groups = groups_from((:V => ["V1", "V2", "V3"], :D => ["D1", "D2"], :J => ["J1"]))
+        @test labels == ["V1", "V2", "V3", "D1", "D2", "J1"]
+        @test length(groups) == 3
+        @test groups[1].name === :V && groups[1].indices == 1:3
+        @test groups[2].name === :D && groups[2].indices == 4:5
+        @test groups[3].name === :J && groups[3].indices == 6:6
+
+        # Round-trip with CoOccurrenceMatrix
+        matrix = zeros(Int, length(labels), length(labels))
+        cooc = CoOccurrenceMatrix(matrix, labels, groups)
+        @test ngroups(cooc) == 3
+    end
+
+    @testset "Recipe smoke tests" begin
+        using CairoMakie
+        labels, groups = groups_from((:V => ["V1", "V2"], :D => ["D1", "D2"], :J => ["J1"]))
+        matrix = [0 2 1 0 0;
+                  2 0 0 1 0;
+                  1 0 0 2 1;
+                  0 1 2 0 3;
+                  0 0 1 3 0]
+        cooc = CoOccurrenceMatrix(matrix, labels, groups)
+
+        for kw in (
+            (;),
+            (colorscheme = :categorical,),
+            (colorscheme = gradient_colors(min_val = 0.0, max_val = 5.0),),
+            (alpha = 0.6,),
+            (alpha = ComponentAlpha(0.5, 0.9, 1.0),),
+            (alpha_by_value = true,),
+            (alpha_by_value = ValueScaling(enabled = true,
+                                           components = (ribbons = true, arcs = false, labels = false)),),
+            (focus_group = :V, focus_labels = ["V1"]),
+            (sort_by = :value,),
+            (label_order = labels,),
+            (min_ribbon_value = 1.5,),
+            (min_arc_flow = 2.0,),
+        )
+            fig = Figure(size = (300, 300))
+            ax = Axis(fig[1, 1])
+            chordplot!(ax, cooc; kw...)
+            setup_chord_axis!(ax)
+            @test fig isa Figure
+        end
+
+        # Signed weights with diverging scheme
+        signed = [0.0 0.4 -0.1 0.0 0.0;
+                  0.4 0.0 0.0 -0.2 0.0;
+                  -0.1 0.0 0.0 0.3 0.1;
+                  0.0 -0.2 0.3 0.0 0.5;
+                  0.0 0.0 0.1 0.5 0.0]
+        scooc = CoOccurrenceMatrix(signed, labels, groups)
+        fig, ax, _ = chordplot(scooc; colorscheme = diff_colors(scooc))
+        @test fig isa Figure
+
+        # Layered with stacked decomposition
+        L = 3
+        layers_arr = zeros(Float64, length(labels), length(labels), L)
+        for ℓ in 1:L
+            layers_arr[:, :, ℓ] .= matrix .* (0.5 + 0.2 * ℓ)
+        end
+        clay = CoOccurrenceLayers(layers_arr, labels, groups; aggregate = :sum)
+        fig, ax, _ = chordplot(clay; layers_pair_span = :stack_layers)
+        @test fig isa Figure
+    end
+
+    @testset "chord_theme" begin
+        t = chord_theme()
+        @test t isa Theme
+    end
+
     @testset "Type Stability" begin
         matrix = [0 1; 1 0]
         labels = ["a", "b"]
         groups = [GroupInfo{String}(:G, labels, 1:2)]
         cooc = CoOccurrenceMatrix(matrix, labels, groups)
-        
+
         # These should not throw type instability warnings
         @inferred nlabels(cooc)
         @inferred ngroups(cooc)
         @inferred total_flow(cooc, 1)
-        
+
         layout = compute_layout(cooc)
         @inferred narcs(layout)
         @inferred nribbons(layout)
+    end
+
+    @testset "Show methods" begin
+        matrix = [0 2; 2 0]
+        labels = ["a", "b"]
+        groups = [GroupInfo{String}(:G, labels, 1:2)]
+        cooc = CoOccurrenceMatrix(matrix, labels, groups)
+        s = sprint(show, MIME"text/plain"(), cooc)
+        @test occursin("CoOccurrenceMatrix", s)
+        @test occursin(":G", s)
+
+        layout = compute_layout(cooc)
+        s = sprint(show, MIME"text/plain"(), layout)
+        @test occursin("ChordLayout", s)
+        @test occursin("arcs", s)
+
+        # Layered show
+        layers_arr = cat([0.0 1.0; 1.0 0.0], [0.0 0.5; 0.5 0.0]; dims = 3)
+        clay = CoOccurrenceLayers(layers_arr, labels, groups; aggregate = :sum)
+        s = sprint(show, MIME"text/plain"(), clay)
+        @test occursin("CoOccurrenceLayers", s)
+        @test occursin("layer", s)
+
+        # Compact show for ArcSegment / Ribbon / GroupInfo
+        @test occursin("ArcSegment(label=1", sprint(show, layout.arcs[1]))
+        @test occursin("Ribbon(", sprint(show, layout.ribbons[1]))
+        @test occursin("GroupInfo(:G", sprint(show, groups[1]))
+    end
+
+    @testset "Group / palette helpers" begin
+        @test ChordPlots.palette_colors(:default) == ChordPlots.wong_palette()
+        @test ChordPlots.palette_colors(:modern)  == ChordPlots.modern_palette()
+        @test_throws ArgumentError ChordPlots.palette_colors(:nonexistent)
+
+        # Wong palette is now 7 distinct colors
+        @test length(ChordPlots.wong_palette()) == 7
+        @test length(unique(ChordPlots.wong_palette())) == 7
+
+        # `take_n_colors` returns the prefix when n <= length(palette)
+        small = ChordPlots.take_n_colors(ChordPlots.wong_palette(), 3)
+        @test length(small) == 3
+        @test small == ChordPlots.wong_palette()[1:3]
+
+        # `take_n_colors` falls back to `distinguishable_colors` for n > length
+        many = ChordPlots.take_n_colors(ChordPlots.wong_palette(), 15)
+        @test length(many) == 15
+        @test length(unique(many)) == 15  # no duplicates from cycling
+        @test many[1:7] == ChordPlots.wong_palette()
+    end
+
+    @testset "categorical_colors palettes" begin
+        cs1 = categorical_colors(5; palette = :default)
+        @test length(cs1.colors) == 5
+        cs2 = categorical_colors(5; palette = :modern)
+        @test length(cs2.colors) == 5
+        @test cs1.colors[1] != cs2.colors[1]
+        @test_throws ArgumentError categorical_colors(3; palette = :unknown)
+    end
+
+    @testset "group_colors palette options" begin
+        labels, groups = groups_from((:G1 => ["a"], :G2 => ["b"]))
+        cooc = CoOccurrenceMatrix([0 1; 1 0], labels, groups)
+        cs_default = group_colors(cooc)
+        cs_modern  = group_colors(cooc; palette = :modern)
+        @test cs_default isa GroupColorScheme
+        @test cs_modern  isa GroupColorScheme
+        @test cs_default.group_colors[:G1] != cs_modern.group_colors[:G1]
+    end
+
+    @testset "GradientColorScheme resolves arc + ribbon colors" begin
+        labels, groups = groups_from((:G => ["a", "b", "c"]))
+        cooc = CoOccurrenceMatrix([0.0 2.0 1.0; 2.0 0.0 3.0; 1.0 3.0 0.0], labels, groups)
+        scheme = gradient_colors(colormap = :viridis, min_val = 0.0, max_val = 6.0)
+        layout = compute_layout(cooc)
+        # Both methods used to throw `MethodError`; they now return concrete colors.
+        @test resolve_arc_color(scheme, layout.arcs[1], cooc) isa RGB
+        @test resolve_ribbon_color(scheme, layout.ribbons[1], cooc) isa RGB
+        # Degenerate range falls back to mid-gradient (no DivideError)
+        scheme0 = gradient_colors(colormap = :viridis, min_val = 0.0, max_val = 0.0)
+        @test resolve_arc_color(scheme0, layout.arcs[1], cooc) isa RGB
+    end
+
+    @testset "DivergingColorScheme arc by net flow" begin
+        # Net flow is signed, so red <-> blue depends on arc index
+        signed = [0.0  1.0  -2.0;
+                  1.0  0.0   0.5;
+                 -2.0  0.5   0.0]
+        labels, groups = groups_from((:G => ["A", "B", "C"]))
+        cooc = CoOccurrenceMatrix(signed, labels, groups)
+        cs = diverging_colors(cooc)
+        layout = compute_layout(cooc)
+        # Arc A (net flow = -1.0) should be more blue; B (net flow = 1.5) more red.
+        col_A = resolve_arc_color(cs, layout.arcs[1], cooc)
+        col_B = resolve_arc_color(cs, layout.arcs[2], cooc)
+        @test col_A.b > col_A.r
+        @test col_B.r > col_B.b
+    end
+
+    @testset "filter_ribbons / filter_ribbons_top_n use magnitude" begin
+        labels, groups = groups_from((:G => ["A", "B", "C"]))
+        cooc = CoOccurrenceMatrix([0.0 5.0 -1.0;
+                                    5.0 0.0  3.0;
+                                   -1.0 3.0  0.0], labels, groups)
+        layout = compute_layout(cooc)
+        @test nribbons(layout) == 3
+
+        kept = filter_ribbons(layout, 2.0)
+        @test all(abs(r.value) >= 2.0 for r in kept.ribbons)
+        @test nribbons(kept) == 2  # |5|, |3| but not |-1|
+
+        # `filter_ribbons_top_n` selects by magnitude (so a strong negative beats a small positive)
+        cooc2 = CoOccurrenceMatrix([0.0 1.0 -8.0;
+                                     1.0 0.0  2.0;
+                                    -8.0 2.0  0.0], labels, groups)
+        layout2 = compute_layout(cooc2)
+        top1 = filter_ribbons_top_n(layout2, 1)
+        @test nribbons(top1) == 1
+        @test top1.ribbons[1].value == -8.0  # magnitude wins
+
+        # n > nribbons keeps all; n <= 0 keeps none
+        @test nribbons(filter_ribbons_top_n(layout, 10)) == 3
+        @test nribbons(filter_ribbons_top_n(layout, 0)) == 0
+    end
+
+    @testset "label_order varargs and label resolution" begin
+        labels1, groups1 = groups_from((:V => ["V1"], :D => ["D1", "D2"], :J => ["J1"]))
+        cooc1 = CoOccurrenceMatrix([0 2 1 0; 2 0 1 3; 1 1 0 1; 0 3 1 0], labels1, groups1)
+        labels2, groups2 = groups_from((:V => ["V2"], :D => ["D1", "D3"], :J => ["J1", "J2"]))
+        cooc2 = CoOccurrenceMatrix([0 1 0 0 0;
+                                    1 0 2 1 1;
+                                    0 2 0 0 1;
+                                    0 1 0 0 3;
+                                    0 1 1 3 0], labels2, groups2)
+        # Varargs form
+        order = label_order(cooc1, cooc2)
+        @test "V1" in order && "V2" in order && "D3" in order
+        # Varargs with kwargs (intersection)
+        order_inter = label_order(cooc1, cooc2; include_all = false)
+        @test "D1" in order_inter
+        @test !("V1" in order_inter)
+        # Empty list
+        @test label_order(typeof(cooc1)[]) == String[]
+    end
+
+    @testset "ribbon_paths / label_positions / arc helpers" begin
+        labels, groups = groups_from((:G => ["a", "b", "c"]))
+        cooc = CoOccurrenceMatrix([0.0 1.0 1.0; 1.0 0.0 1.0; 1.0 1.0 0.0], labels, groups)
+        layout = compute_layout(cooc)
+
+        paths = ribbon_paths(layout.ribbons, layout.inner_radius; n_bezier = 16)
+        @test length(paths) == nribbons(layout)
+        @test all(!isempty(p.points) for p in paths)
+
+        positions = label_positions(layout.arcs, layout.outer_radius, 0.1)
+        @test length(positions) == narcs(layout)
+        @test all(p.point isa ChordPlots.Point2f for p in positions)
+
+        # arc_polygon basic shape
+        poly = arc_polygon(0.8, 1.0, 0.0, π/2; n_points = 8)
+        @test length(poly) == 16  # outer + inner
+    end
+
+    @testset "get_group" begin
+        labels, groups = groups_from((:V => ["V1", "V2"], :D => ["D1"]))
+        cooc = CoOccurrenceMatrix(zeros(Int, 3, 3), labels, groups)
+        @test get_group(cooc, 1) === :V
+        @test get_group(cooc, 3) === :D
+        @test_throws ArgumentError get_group(cooc, 99)
+    end
+
+    @testset "n_layers deprecation alias" begin
+        layers_arr = cat([0.0 1.0; 1.0 0.0], [0.0 0.5; 0.5 0.0]; dims = 3)
+        labels, groups = groups_from((:G => ["a", "b"]))
+        cooc = CoOccurrenceLayers(layers_arr, labels, groups; aggregate = :sum)
+        # `n_layers` is deprecated but must still return the correct count for back-compat
+        @test n_layers(cooc) == nlayers(cooc) == 2
+    end
+
+    @testset "aggregate_layers handles Int input" begin
+        # Previously :mean / :median crashed for Int layers (InexactError)
+        layers_int = cat([0 2; 2 0], [0 1; 1 0], [0 4; 4 0]; dims = 3)
+        labels, groups = groups_from((:G => ["a", "b"]))
+        cooc_sum    = CoOccurrenceLayers(layers_int, labels, groups; aggregate = :sum)
+        cooc_mean   = CoOccurrenceLayers(layers_int, labels, groups; aggregate = :mean)
+        cooc_median = CoOccurrenceLayers(layers_int, labels, groups; aggregate = :median)
+        @test cooc_sum[1, 2]    == 7
+        @test cooc_mean[1, 2]   ≈ 7 / 3
+        @test cooc_median[1, 2] == 2
+        # Compute layout on each
+        @test narcs(compute_layout(cooc_sum))    == 2
+        @test narcs(compute_layout(cooc_mean))   == 2
+        @test narcs(compute_layout(cooc_median)) == 2
+    end
+
+    @testset "cooccurrence_values for layered + signed" begin
+        # Layered: one entry per (i<j, layer) for non-zero values; signed values kept
+        layers_arr = cat([0.0 2.0; 2.0 0.0], [0.0 -1.0; -1.0 0.0]; dims = 3)
+        labels, groups = groups_from((:G => ["a", "b"]))
+        clay = CoOccurrenceLayers(layers_arr, labels, groups; aggregate = :sum)
+        @test cooccurrence_values(clay) == [2.0, -1.0]
+
+        # Signed dense matrix: keeps both positive and negative non-zero entries
+        labels3, groups3 = groups_from((:G => ["a", "b", "c"]))
+        signed = CoOccurrenceMatrix([0.0 -3.0 0.0; -3.0 0.0 4.0; 0.0 4.0 0.0], labels3, groups3)
+        # Upper triangle traversal: (1,2)=-3.0, (1,3)=0.0 (skipped), (2,3)=4.0
+        @test cooccurrence_values(signed) == [-3.0, 4.0]
+    end
+
+    @testset "ComponentAlpha clamping and constructors" begin
+        @test ComponentAlpha(0.5).ribbons == 0.5
+        @test ComponentAlpha(-1.0).ribbons == 0.0  # clamped
+        @test ComponentAlpha(2.0).labels  == 1.0  # clamped
+        ca = ComponentAlpha((0.1, 0.5, 1.0))
+        @test ca.ribbons == 0.1
+        ca2 = ComponentAlpha(; ribbons = 0.3, arcs = 0.7, labels = 1.0)
+        @test ca2.arcs == 0.7
+    end
+
+    @testset "ValueScaling validation and constructors" begin
+        @test ValueScaling(false).enabled == false
+        @test ValueScaling(true).ribbons == true
+        vs = ValueScaling(; enabled = true,
+                            components = (ribbons = true, arcs = false, labels = true),
+                            min_alpha = 0.05, scale = :log)
+        @test vs.arcs == false && vs.scale === :log
+        # Positional tuple form
+        vs2 = ValueScaling(; enabled = true, components = (true, false, true))
+        @test vs2.arcs == false
+        # Validation
+        @test_throws ArgumentError ValueScaling(; scale = :linlog)
+        @test_throws ArgumentError ChordPlots.components_tuple((ribbons = true,))  # missing keys
+        @test_throws ArgumentError ChordPlots.components_tuple("not a tuple")
+    end
+
+    @testset "color utilities" begin
+        c = RGB(0.5, 0.6, 0.7)
+        @test alpha(with_alpha(c, 0.4)) ≈ 0.4
+        d = darken(c, 0.5)
+        @test d.r ≈ 0.25
+        l = lighten(c, 0.5)
+        @test l.r ≈ 0.75
+    end
+
+    @testset "setup_chord_axis! sets limits" begin
+        using CairoMakie
+        fig = Figure()
+        ax = Axis(fig[1, 1])
+        setup_chord_axis!(ax; outer_radius = 2.0, label_offset = 0.5, padding = 0.1)
+        # limits are set via an Observable; just check the call returns the axis
+        @test ax isa Axis
+    end
+
+    @testset "chord_theme accepts kwargs" begin
+        t = chord_theme(; fontsize = 18, background = :transparent)
+        @test t isa Theme
+    end
+
+    @testset "LayoutConfig direction = -1 (clockwise)" begin
+        labels, groups = groups_from((:G => ["a", "b", "c"]))
+        cooc = CoOccurrenceMatrix([0 1 1; 1 0 1; 1 1 0], labels, groups)
+        cfg = LayoutConfig(direction = -1)
+        layout = compute_layout(cooc, cfg)
+        @test narcs(layout) == 3
+        # All arcs still well-formed (start <= end)
+        @test all(a.start_angle <= a.end_angle for a in layout.arcs)
+    end
+
+    @testset "compute_layout errors on all-zero matrix" begin
+        labels, groups = groups_from((:G => ["a", "b"]))
+        cooc = CoOccurrenceMatrix(zeros(Int, 2, 2), labels, groups)
+        @test_throws Exception compute_layout(cooc)
+    end
+
+    @testset "label_order invalid permutation" begin
+        labels, groups = groups_from((:G => ["a", "b", "c"]))
+        cooc = CoOccurrenceMatrix([0 1 1; 1 0 1; 1 1 0], labels, groups)
+        # Wrong length is silently ignored at the recipe level (resolve_label_order),
+        # but compute_layout via LayoutConfig errors loudly.
+        @test_throws ArgumentError compute_layout(cooc, LayoutConfig(label_order = [1, 2]))
+        @test_throws ArgumentError compute_layout(cooc, LayoutConfig(label_order = [1, 1, 2]))  # not a perm
+    end
+
+    @testset "GroupInfo getindex / get / haskey" begin
+        g = GroupInfo{String}(:G, ["x", "y"], 5:6)
+        @test g["x"] == 5
+        @test g["y"] == 6
+        @test get(g, "z", -1) == -1
+        @test haskey(g, "x")
+        @test !haskey(g, "z")
+        @test_throws KeyError g["z"]
+    end
+
+    @testset "CoOccurrenceMatrix dimension mismatch" begin
+        @test_throws DimensionMismatch CoOccurrenceMatrix([0 1; 1 0], ["a"], [GroupInfo{String}(:G, ["a"], 1:1)])
+    end
+
+    @testset "CoOccurrenceLayers validation" begin
+        labels, groups = groups_from((:G => ["a", "b"]))
+        # Wrong outer constructor: non-square first two dims
+        @test_throws DimensionMismatch CoOccurrenceLayers(zeros(Float64, 2, 3, 1), labels, groups)
+        # Empty layers (third dim = 0)
+        @test_throws ArgumentError CoOccurrenceLayers(zeros(Float64, 2, 2, 0), labels, groups)
+        # Bad aggregate symbol
+        @test_throws ArgumentError CoOccurrenceLayers(zeros(Float64, 2, 2, 1), labels, groups; aggregate = :nope)
+    end
+
+    @testset "resolve_label_order with String vector" begin
+        labels, groups = groups_from((:G => ["a", "b", "c"]))
+        cooc = CoOccurrenceMatrix([0 1 1; 1 0 1; 1 1 0], labels, groups)
+        @test ChordPlots.resolve_label_order(cooc, ["c", "a", "b"]) == [3, 1, 2]
+        @test ChordPlots.resolve_label_order(cooc, String[]) === nothing
+        @test ChordPlots.resolve_label_order(cooc, nothing) === nothing
+        # Subset (length mismatch) is rejected
+        @test ChordPlots.resolve_label_order(cooc, ["a", "b"]) === nothing
+    end
+
+    @testset "abs_total_flow with signed matrix and string label" begin
+        labels, groups = groups_from((:G => ["a", "b"]))
+        cooc = CoOccurrenceMatrix([0.0 -3.0; -3.0 0.0], labels, groups)
+        @test abs_total_flow(cooc, "a") ≈ 3.0
+        @test total_flow(cooc, "a")     ≈ -3.0
     end
 end
 

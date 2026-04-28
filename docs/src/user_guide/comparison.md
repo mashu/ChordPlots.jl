@@ -59,12 +59,12 @@ chordplot(d; colorscheme=cs)
 ## Absolute Differences
 
 If you only care about the **magnitude** of change (not direction), compute absolute
-values externally (e.g. `abs.(matrix)`):
+values externally (e.g. `abs.(matrix)`) and use a one-sided gradient scheme:
 
 ```julia
 matrix_abs = abs.(matrix)
 d_abs = CoOccurrenceMatrix(matrix_abs, labels, groups)
-chordplot(d_abs; colorscheme=:Reds)
+chordplot(d_abs; colorscheme = gradient_colors(; colormap = :Reds, min_val = 0.0, max_val = maximum(matrix_abs)))
 ```
 
 ## Understanding the Direction

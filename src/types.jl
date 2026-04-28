@@ -68,6 +68,45 @@ Base.keys(g::GroupInfo) = g.labels
 Base.get(g::GroupInfo, label::AbstractString, default) = haskey(g, label) ? g[label] : default
 
 """
+    groups_from(pairs) -> (labels, groups)
+
+Build a flat label vector and a `Vector{GroupInfo{S}}` from any iterable of
+`name => labels` pairs (e.g. `(:V => v_labels, :D => d_labels)` or a `Dict`),
+computing the global index ranges for you. Use the result directly with
+`CoOccurrenceMatrix(matrix, labels, groups)` or `CoOccurrenceLayers(...)`.
+
+# Example
+```julia
+labels, groups = groups_from((:V => ["V1","V2"], :D => ["D1"], :J => ["J1","J2"]))
+cooc = CoOccurrenceMatrix(matrix, labels, groups)
+```
+"""
+function groups_from(pairs)
+    items = collect(pairs)  # accept tuples, NamedTuples, Dicts, generators
+    isempty(items) && throw(ArgumentError("groups_from: empty input"))
+    # Determine the string element type from the first non-empty group's labels.
+    S = nothing
+    for (_, lbls) in items
+        if !isempty(lbls)
+            S = eltype(lbls)
+            break
+        end
+    end
+    S === nothing && throw(ArgumentError("groups_from: all groups are empty"))
+    labels = Vector{S}()
+    groups = Vector{GroupInfo{S}}()
+    for (name, lbls) in items
+        nm = Symbol(name)
+        n_before = length(labels)
+        for l in lbls
+            push!(labels, S(l))
+        end
+        push!(groups, GroupInfo{S}(nm, labels[(n_before + 1):end], (n_before + 1):length(labels)))
+    end
+    labels, groups
+end
+
+"""
     CoOccurrenceMatrix{T<:Real, S<:AbstractString}
 
 Stores co-occurrence counts between labels with group information.
@@ -139,7 +178,7 @@ Ribbons are drawn **separately** in layer order (standard alpha compositing). Fo
 (e.g. `ComponentAlpha(ribbons = 0.35, ...)`) on **repeated** samples; for thin
 slices, opaque ribbons are usually readable.
 """
-struct CoOccurrenceLayers{T<:Real, S<:AbstractString, A<:AbstractArray{T,3}, M<:AbstractMatrix{T}} <:
+struct CoOccurrenceLayers{T<:Real, S<:AbstractString, A<:AbstractArray{T,3}, M<:AbstractMatrix{<:Real}} <:
        AbstractChordData
     layers::A
     matrix::M
@@ -151,13 +190,13 @@ struct CoOccurrenceLayers{T<:Real, S<:AbstractString, A<:AbstractArray{T,3}, M<:
         layers::A,
         matrix::M,
         labels::Vector{S},
-        groups::Vector{GroupInfo{S}}
-    ) where {T<:Real, S<:AbstractString, A<:AbstractArray{T,3}, M<:AbstractMatrix{T}}
-        n, m, nL = size(layers)
+        groups::Vector{GroupInfo{S}},
+    ) where {T<:Real, S<:AbstractString, A<:AbstractArray{T,3}, M<:AbstractMatrix{<:Real}}
+        n, m, _ = size(layers)
         n == m || throw(DimensionMismatch("layers must be n×n×L, got size $(size(layers))"))
         n == length(labels) || throw(DimensionMismatch("layers first dimension and labels differ"))
         size(matrix) == (n, n) || throw(DimensionMismatch("matrix and layers disagree in size"))
-        new{T, S, A, M}(layers, matrix, labels, groups, Dict{S,Int}(l => k for (k, l) in enumerate(labels)))
+        new{T, S, A, M}(layers, matrix, labels, groups, Dict{S, Int}(l => k for (k, l) in enumerate(labels)))
     end
 end
 
@@ -165,19 +204,24 @@ function aggregate_layers(layers::AbstractArray{T,3}, aggregate::Symbol) where {
     n, m, L = size(layers)
     n == m || throw(DimensionMismatch("layers must be n×n×L, got size $(size(layers))"))
     aggregate in (:sum, :mean, :median) || throw(ArgumentError("aggregate must be :sum, :mean, or :median, got $aggregate"))
-    out = zeros(T, n, n)
     if aggregate === :sum
-        out .= dropdims(sum(layers, dims=3), dims=3)
-        return out
-    elseif aggregate === :mean
-        out .= dropdims(sum(layers, dims=3), dims=3) ./ T(L)
-        return out
-    else
-        @inbounds for i in 1:n, j in 1:n
-            out[i, j] = median(@view layers[i, j, :])
-        end
+        # Preserve T (Int aggregates stay Int).
+        out = zeros(T, n, n)
+        out .= dropdims(sum(layers, dims = 3), dims = 3)
         return out
     end
+    # `:mean` and `:median` may yield non-integer values; promote to a float type
+    # so the result can be stored without InexactError when T <: Integer.
+    F = float(T)
+    out = zeros(F, n, n)
+    if aggregate === :mean
+        out .= dropdims(sum(layers, dims = 3), dims = 3) ./ F(L)
+        return out
+    end
+    @inbounds for i in 1:n, j in 1:n
+        out[i, j] = F(median(@view layers[i, j, :]))
+    end
+    out
 end
 
 function CoOccurrenceLayers(
@@ -249,11 +293,63 @@ function abs_total_flow(c::AbstractChordData, label::AbstractString)
 end
 
 """
-    n_layers(c::CoOccurrenceLayers) -> Int
+    nlayers(c::CoOccurrenceLayers) -> Int
 
 Number of matrix layers (third index of `c.layers`, e.g. one per donor).
 """
-n_layers(c::CoOccurrenceLayers) = size(c.layers, 3)
+nlayers(c::CoOccurrenceLayers) = size(c.layers, 3)
+
+@deprecate n_layers(c::CoOccurrenceLayers) nlayers(c)
+
+#------------------------------------------------------------------------------
+# Pretty-printing for the public types
+#------------------------------------------------------------------------------
+
+function Base.show(io::IO, ::MIME"text/plain", c::CoOccurrenceMatrix)
+    println(io, "CoOccurrenceMatrix{", eltype(c.matrix), ", ", eltype(c.labels), "}")
+    println(io, "  ", nlabels(c), " labels in ", ngroups(c), " group(s):")
+    for g in c.groups
+        println(io, "    :", g.name, " (", length(g), ") ", preview_labels(g.labels))
+    end
+    print(io, "  matrix size: ", size(c.matrix))
+end
+
+function Base.show(io::IO, ::MIME"text/plain", c::CoOccurrenceLayers)
+    println(io, "CoOccurrenceLayers{", eltype(c.matrix), ", ", eltype(c.labels), "}")
+    println(io, "  ", nlabels(c), " labels in ", ngroups(c), " group(s); ", nlayers(c), " layer(s)")
+    for g in c.groups
+        println(io, "    :", g.name, " (", length(g), ") ", preview_labels(g.labels))
+    end
+    print(io, "  layers size: ", size(c.layers))
+end
+
+function Base.show(io::IO, ::MIME"text/plain", l::ChordLayout)
+    println(io, "ChordLayout{", typeof(l.inner_radius), "}")
+    println(io, "  arcs: ", narcs(l), "    ribbons: ", nribbons(l))
+    print(io, "  inner_radius: ", l.inner_radius, "  outer_radius: ", l.outer_radius,
+              "  gap_angle: ", round(l.gap_angle; digits = 4))
+end
+
+Base.show(io::IO, a::ArcSegment) =
+    print(io, "ArcSegment(label=", a.label_idx,
+              ", angles=[", round(a.start_angle; digits = 3), ", ",
+                              round(a.end_angle;   digits = 3), "]",
+              ", value=", a.value, ")")
+
+Base.show(io::IO, r::Ribbon) =
+    print(io, "Ribbon(", r.source.label_idx, " ↔ ", r.target.label_idx,
+              ", value=", r.value, ")")
+
+Base.show(io::IO, g::GroupInfo) =
+    print(io, "GroupInfo(:", g.name, ", ", length(g), " labels, indices=", g.indices, ")")
+
+# Shorten label vectors for compact one-liners in the section headers above.
+function preview_labels(labels)
+    n = length(labels)
+    n == 0 && return "[]"
+    n <= 4 && return string('[', join(labels, ", "), ']')
+    string('[', join(labels[1:3], ", "), ", …, ", labels[end], ']')
+end
 
 function diverging_pairwise_ribbon_values(cooc::AbstractChordData)
     n = nlabels(cooc)

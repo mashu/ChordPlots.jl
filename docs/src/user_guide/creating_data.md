@@ -6,18 +6,28 @@ from tabular data.
 
 ## From Raw Matrices (recommended)
 
-Create a `CoOccurrenceMatrix` directly from your preprocessed weights:
+Create a `CoOccurrenceMatrix` directly from your preprocessed weights. For multiple groups,
+use `groups_from` so you don't have to bookkeep per-group index ranges by hand:
 
 ```julia
 matrix = [0 10 2;
           10 0 3;
           2  3 0]
+
+# Build the flat label vector and the group structure together
+labels, groups = groups_from((:Group1 => ["A", "B"], :Group2 => ["C"]))
+cooc = CoOccurrenceMatrix(matrix, labels, groups)
+```
+
+If you prefer the explicit form (e.g. for an existing label vector), the original
+constructor still works:
+
+```julia
 labels = ["A", "B", "C"]
 groups = [
     GroupInfo{String}(:Group1, ["A", "B"], 1:2),
-    GroupInfo{String}(:Group2, ["C"], 3:3),
+    GroupInfo{String}(:Group2, ["C"],      3:3),
 ]
-
 cooc = CoOccurrenceMatrix(matrix, labels, groups)
 ```
 

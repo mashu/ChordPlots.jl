@@ -18,13 +18,17 @@ using CairoMakie, ChordPlots
 matrix = [0 3 1;
           3 0 2;
           1 2 0]
-labels = ["A", "B", "C"]
-groups = [GroupInfo{String}(:G, labels, 1:3)]
+
+# `groups_from` builds the flat label vector and the per-group index ranges.
+# (For the explicit form, see "Creating Data".)
+labels, groups = groups_from((:G => ["A", "B", "C"]))
 cooc = CoOccurrenceMatrix(matrix, labels, groups)
 
-# Create plot
-fig = Figure(size=(800, 800))
-ax = Axis(fig[1,1], title="My First Chord Diagram")
+# A reusable theme removes the per-figure boilerplate (background, fonts, no spines).
+set_theme!(chord_theme())
+
+fig = Figure(size = (800, 800))
+ax = Axis(fig[1, 1], title = "My First Chord Diagram")
 chordplot!(ax, cooc)
 setup_chord_axis!(ax)
 fig
