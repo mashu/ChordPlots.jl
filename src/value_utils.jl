@@ -4,18 +4,20 @@
 """
     cooccurrence_values(cooc::AbstractChordData) -> Vector{Float64}
 
-Return the upper-triangle values (each pair counted once).
+Return the non-zero upper-triangle values (each pair counted once). Signed values
+are kept as-is (so a histogram of a diff matrix shows positive and negative bars);
+exact zeros are dropped because they correspond to absent links.
 
-This is a small helper for choosing visualization thresholds (e.g. `min_ribbon_value`).
-No normalization or scaling is performed; values are returned as-is (filtered to `> 0`).
+Use this together with [`value_histogram`](@ref) to choose a threshold such as
+`min_ribbon_value` (which is itself a magnitude threshold — `abs(value) >= threshold`).
 """
 function cooccurrence_values(cooc::AbstractChordData)
     n = nlabels(cooc)
     vals = Float64[]
-    for j in 2:n
+    @inbounds for j in 2:n
         for i in 1:(j - 1)
-            v = cooc.matrix[i, j]
-            v > 0 && push!(vals, Float64(v))
+            v = Float64(cooc.matrix[i, j])
+            v != 0.0 && push!(vals, v)
         end
     end
     vals
@@ -24,7 +26,7 @@ end
 """
     cooccurrence_values(coocs::AbstractVector{<:AbstractChordData}) -> Vector{Float64}
 
-Concatenate `cooccurrence_values` across matrices.
+Concatenate `cooccurrence_values` across multiple matrices.
 """
 function cooccurrence_values(coocs::AbstractVector{<:AbstractChordData})
     vcat((cooccurrence_values(c) for c in coocs)...)
@@ -33,11 +35,11 @@ end
 function cooccurrence_values(cooc::CoOccurrenceLayers)
     n, _, nL = size(cooc.layers)
     vals = Float64[]
-    for j in 2:n
+    @inbounds for j in 2:n
         for i in 1:(j - 1)
             for k in 1:nL
-                v = cooc.layers[i, j, k]
-                v > 0 && push!(vals, Float64(v))
+                v = Float64(cooc.layers[i, j, k])
+                v != 0.0 && push!(vals, v)
             end
         end
     end

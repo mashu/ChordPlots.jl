@@ -652,32 +652,41 @@ label_order(cooc1::AbstractChordData, cooc2::AbstractChordData, coocs::AbstractC
 """
     filter_ribbons(layout::ChordLayout, min_value::Real)
 
-Filter ribbons below a minimum value threshold.
+Drop ribbons whose **magnitude** is below `min_value`. Uses `abs(r.value)` so
+the threshold has the same meaning for unsigned (counts, frequencies) and
+signed (diff/correlation) matrices — a strongly negative ribbon is "large"
+just like a strongly positive one.
 """
 function filter_ribbons(layout::ChordLayout{T}, min_value::Real) where T
-    filtered = filter(r -> r.value >= min_value, layout.ribbons)
+    filtered = filter(r -> abs(r.value) >= min_value, layout.ribbons)
     ChordLayout{T}(
         layout.arcs,
         filtered,
         layout.inner_radius,
         layout.outer_radius,
-        layout.gap_angle
+        layout.gap_angle,
     )
 end
 
 """
     filter_ribbons_top_n(layout::ChordLayout, n::Int)
 
-Keep only the top n ribbons by value.
+Keep only the top `n` ribbons by **magnitude** (`abs(r.value)`), so signed
+matrices keep the strongest positive *and* negative connections rather than
+favouring positive ones.
 """
 function filter_ribbons_top_n(layout::ChordLayout{T}, n::Int) where T
-    sorted = sort(layout.ribbons, by=r -> r.value, rev=true)
+    n <= 0 && return ChordLayout{T}(
+        layout.arcs, Ribbon{T}[],
+        layout.inner_radius, layout.outer_radius, layout.gap_angle,
+    )
+    sorted = sort(layout.ribbons, by = r -> abs(r.value), rev = true)
     filtered = sorted[1:min(n, length(sorted))]
     ChordLayout{T}(
         layout.arcs,
         filtered,
         layout.inner_radius,
         layout.outer_radius,
-        layout.gap_angle
+        layout.gap_angle,
     )
 end

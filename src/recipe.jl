@@ -347,6 +347,7 @@ function apply_min_arc_flow(cooc::CoOccurrenceLayers, min_flow::Real)
         return cooc, nothing
     end
     new_layers = cooc.layers[keep_indices, keep_indices, :]
+    new_matrix = cooc.matrix[keep_indices, keep_indices]  # preserve user's aggregate
     new_labels = cooc.labels[keep_indices]
     S = eltype(cooc.labels)
     new_groups = GroupInfo{S}[]
@@ -360,7 +361,7 @@ function apply_min_arc_flow(cooc::CoOccurrenceLayers, min_flow::Real)
             idx += n_rem
         end
     end
-    return CoOccurrenceLayers(new_layers, new_labels, new_groups), keep_indices
+    return CoOccurrenceLayers(new_layers, new_matrix, new_labels, new_groups), keep_indices
 end
 
 function slice_matrix_keep(mat::AbstractMatrix, keep::Nothing)

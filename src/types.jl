@@ -178,7 +178,7 @@ Ribbons are drawn **separately** in layer order (standard alpha compositing). Fo
 (e.g. `ComponentAlpha(ribbons = 0.35, ...)`) on **repeated** samples; for thin
 slices, opaque ribbons are usually readable.
 """
-struct CoOccurrenceLayers{T<:Real, S<:AbstractString, A<:AbstractArray{T,3}, M<:AbstractMatrix{T}} <:
+struct CoOccurrenceLayers{T<:Real, S<:AbstractString, A<:AbstractArray{T,3}, M<:AbstractMatrix{<:Real}} <:
        AbstractChordData
     layers::A
     matrix::M
@@ -190,13 +190,13 @@ struct CoOccurrenceLayers{T<:Real, S<:AbstractString, A<:AbstractArray{T,3}, M<:
         layers::A,
         matrix::M,
         labels::Vector{S},
-        groups::Vector{GroupInfo{S}}
-    ) where {T<:Real, S<:AbstractString, A<:AbstractArray{T,3}, M<:AbstractMatrix{T}}
-        n, m, nL = size(layers)
+        groups::Vector{GroupInfo{S}},
+    ) where {T<:Real, S<:AbstractString, A<:AbstractArray{T,3}, M<:AbstractMatrix{<:Real}}
+        n, m, _ = size(layers)
         n == m || throw(DimensionMismatch("layers must be n×n×L, got size $(size(layers))"))
         n == length(labels) || throw(DimensionMismatch("layers first dimension and labels differ"))
         size(matrix) == (n, n) || throw(DimensionMismatch("matrix and layers disagree in size"))
-        new{T, S, A, M}(layers, matrix, labels, groups, Dict{S,Int}(l => k for (k, l) in enumerate(labels)))
+        new{T, S, A, M}(layers, matrix, labels, groups, Dict{S, Int}(l => k for (k, l) in enumerate(labels)))
     end
 end
 
@@ -204,19 +204,24 @@ function aggregate_layers(layers::AbstractArray{T,3}, aggregate::Symbol) where {
     n, m, L = size(layers)
     n == m || throw(DimensionMismatch("layers must be n×n×L, got size $(size(layers))"))
     aggregate in (:sum, :mean, :median) || throw(ArgumentError("aggregate must be :sum, :mean, or :median, got $aggregate"))
-    out = zeros(T, n, n)
     if aggregate === :sum
-        out .= dropdims(sum(layers, dims=3), dims=3)
-        return out
-    elseif aggregate === :mean
-        out .= dropdims(sum(layers, dims=3), dims=3) ./ T(L)
-        return out
-    else
-        @inbounds for i in 1:n, j in 1:n
-            out[i, j] = median(@view layers[i, j, :])
-        end
+        # Preserve T (Int aggregates stay Int).
+        out = zeros(T, n, n)
+        out .= dropdims(sum(layers, dims = 3), dims = 3)
         return out
     end
+    # `:mean` and `:median` may yield non-integer values; promote to a float type
+    # so the result can be stored without InexactError when T <: Integer.
+    F = float(T)
+    out = zeros(F, n, n)
+    if aggregate === :mean
+        out .= dropdims(sum(layers, dims = 3), dims = 3) ./ F(L)
+        return out
+    end
+    @inbounds for i in 1:n, j in 1:n
+        out[i, j] = F(median(@view layers[i, j, :]))
+    end
+    out
 end
 
 function CoOccurrenceLayers(
