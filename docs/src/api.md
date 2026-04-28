@@ -23,6 +23,8 @@ labelled-group structure without bookkeeping the per-group index ranges yourself
 
 ```@docs
 AbstractChordData
+AbstractLayout
+AbstractGeometry
 CoOccurrenceMatrix
 CoOccurrenceLayers
 GroupInfo
@@ -64,9 +66,12 @@ ValueScaling
 
 ## Color Schemes
 
-Pre-built and customisable colour schemes for arcs and ribbons.
+Pre-built and customisable colour schemes for arcs and ribbons. To convert a
+scheme + element into a concrete colour, use the `resolve_*` helpers (these are
+how the recipe colours each ribbon and arc internally).
 
 ```@docs
+AbstractColorScheme
 group_colors
 gradient_colors
 diverging_colors
@@ -75,6 +80,8 @@ GroupColorScheme
 CategoricalColorScheme
 GradientColorScheme
 DivergingColorScheme
+resolve_arc_color
+resolve_ribbon_color
 ```
 
 `categorical_colors(n::Int; palette=:default)` returns a [`CategoricalColorScheme`](@ref) with `n` distinct colours. The default palette is the Wong colourblind-friendly palette (deduplicated to 7 unique hues); for `n` larger than the palette ChordPlots falls back to perceptually distinguishable colours via `Colors.distinguishable_colors`. It is not listed in the `@docs` block above because Makie also exports a function of the same name, so Documenter resolves the binding to Makie rather than ChordPlots; the local methods are still available via `ChordPlots.categorical_colors`.
