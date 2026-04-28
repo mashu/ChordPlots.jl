@@ -82,7 +82,9 @@ cooc = CoOccurrenceMatrix(matrix, labels, groups)
 ```
 """
 function groups_from(pairs)
-    items = collect(pairs)  # accept tuples, NamedTuples, Dicts, generators
+    # Accept tuples, NamedTuples, Dicts, generators, and also a single `Pair`.
+    # (A parenthesised `:G => ["a","b"]` is a `Pair`, not a 1-tuple.)
+    items = pairs isa Pair ? [pairs] : collect(pairs)
     isempty(items) && throw(ArgumentError("groups_from: empty input"))
     # Determine the string element type from the first non-empty group's labels.
     S = nothing
@@ -323,23 +325,6 @@ function Base.show(io::IO, ::MIME"text/plain", c::CoOccurrenceLayers)
     print(io, "  layers size: ", size(c.layers))
 end
 
-function Base.show(io::IO, ::MIME"text/plain", l::ChordLayout)
-    println(io, "ChordLayout{", typeof(l.inner_radius), "}")
-    println(io, "  arcs: ", narcs(l), "    ribbons: ", nribbons(l))
-    print(io, "  inner_radius: ", l.inner_radius, "  outer_radius: ", l.outer_radius,
-              "  gap_angle: ", round(l.gap_angle; digits = 4))
-end
-
-Base.show(io::IO, a::ArcSegment) =
-    print(io, "ArcSegment(label=", a.label_idx,
-              ", angles=[", round(a.start_angle; digits = 3), ", ",
-                              round(a.end_angle;   digits = 3), "]",
-              ", value=", a.value, ")")
-
-Base.show(io::IO, r::Ribbon) =
-    print(io, "Ribbon(", r.source.label_idx, " ↔ ", r.target.label_idx,
-              ", value=", r.value, ")")
-
 Base.show(io::IO, g::GroupInfo) =
     print(io, "GroupInfo(:", g.name, ", ", length(g), " labels, indices=", g.indices, ")")
 
@@ -471,6 +456,16 @@ struct Ribbon{T<:Real} <: AbstractGeometry
     value::T
 end
 
+Base.show(io::IO, a::ArcSegment) =
+    print(io, "ArcSegment(label=", a.label_idx,
+              ", angles=[", round(a.start_angle; digits = 3), ", ",
+                              round(a.end_angle;   digits = 3), "]",
+              ", value=", a.value, ")")
+
+Base.show(io::IO, r::Ribbon) =
+    print(io, "Ribbon(", r.source.label_idx, " ↔ ", r.target.label_idx,
+              ", value=", r.value, ")")
+
 """
     is_self_loop(r::Ribbon) -> Bool
 
@@ -500,6 +495,13 @@ struct ChordLayout{T<:Real} <: AbstractLayout
     inner_radius::T
     outer_radius::T
     gap_angle::T
+end
+
+function Base.show(io::IO, ::MIME"text/plain", l::ChordLayout)
+    println(io, "ChordLayout{", typeof(l.inner_radius), "}")
+    println(io, "  arcs: ", narcs(l), "    ribbons: ", nribbons(l))
+    print(io, "  inner_radius: ", l.inner_radius, "  outer_radius: ", l.outer_radius,
+              "  gap_angle: ", round(l.gap_angle; digits = 4))
 end
 
 """

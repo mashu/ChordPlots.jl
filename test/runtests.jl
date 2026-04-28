@@ -562,12 +562,12 @@ using Colors
     end
 
     @testset "categorical_colors palettes" begin
-        cs1 = categorical_colors(5; palette = :default)
+        cs1 = ChordPlots.categorical_colors(5; palette = :default)
         @test length(cs1.colors) == 5
-        cs2 = categorical_colors(5; palette = :modern)
+        cs2 = ChordPlots.categorical_colors(5; palette = :modern)
         @test length(cs2.colors) == 5
         @test cs1.colors[1] != cs2.colors[1]
-        @test_throws ArgumentError categorical_colors(3; palette = :unknown)
+        @test_throws ArgumentError ChordPlots.categorical_colors(3; palette = :unknown)
     end
 
     @testset "group_colors palette options" begin

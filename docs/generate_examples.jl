@@ -1,5 +1,12 @@
 # Generate example plots for documentation
-# Note: This assumes ChordPlots is already available via Pkg.develop()
+# This script is intended to be run via the docs environment:
+# `julia --project=docs docs/generate_examples.jl`
+using Pkg
+Pkg.activate(@__DIR__)
+# Ensure docs environment uses the *local* ChordPlots checkout (not a registry release).
+Pkg.develop(path = joinpath(@__DIR__, ".."))
+Pkg.resolve()
+Pkg.instantiate()
 using ChordPlots
 using CairoMakie
 using Random
