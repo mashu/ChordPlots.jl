@@ -29,7 +29,15 @@ set_theme!(chord_theme())
 
 fig = Figure(size = (800, 800))
 ax = Axis(fig[1, 1], title = "My First Chord Diagram")
-chordplot!(ax, cooc)
+chordplot!(
+    ax,
+    cooc;
+    # For a single group, categorical colors make ribbons distinguishable.
+    colorscheme = :categorical,
+    inner_radius = 0.78,
+    arc_width = 0.06,
+    gap_fraction = 0.02,
+)
 setup_chord_axis!(ax)
 fig
 ```

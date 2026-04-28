@@ -301,8 +301,6 @@ Number of matrix layers (third index of `c.layers`, e.g. one per donor).
 """
 nlayers(c::CoOccurrenceLayers) = size(c.layers, 3)
 
-@deprecate n_layers(c::CoOccurrenceLayers) nlayers(c)
-
 #------------------------------------------------------------------------------
 # Pretty-printing for the public types
 #------------------------------------------------------------------------------

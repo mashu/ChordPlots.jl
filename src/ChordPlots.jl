@@ -19,7 +19,13 @@ matrix = [0 3 1;
           1 2 0]
 labels, groups = groups_from((:G => ["A", "B", "C"]))
 cooc = CoOccurrenceMatrix(matrix, labels, groups)
-fig, ax, plt = chordplot(cooc)
+fig, ax, plt = chordplot(
+    cooc;
+    colorscheme = :categorical,
+    inner_radius = 0.78,
+    arc_width = 0.06,
+    gap_fraction = 0.02,
+)
 setup_chord_axis!(ax)
 fig
 ```
@@ -68,7 +74,7 @@ export group_colors, categorical_colors, gradient_colors, diverging_colors, diff
 export with_alpha, darken, lighten
 export resolve_arc_color, resolve_ribbon_color
 
-export nlabels, ngroups, nlayers, n_layers, total_flow, abs_total_flow, get_group
+export nlabels, ngroups, nlayers, total_flow, abs_total_flow, get_group
 export groups_from
 # Re-export convenience helpers that do not impose semantics on weights
 export cooccurrence_values

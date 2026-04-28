@@ -101,12 +101,12 @@ Create a chord diagram from co-occurrence data.
 # Attributes (grouped by purpose)
 
 ## Radii and arc size
-- `inner_radius = 0.92`: Inner radius for ribbons
+- `inner_radius = 0.88`: Inner radius for ribbons
 - `outer_radius = 1.0`: Outer radius for arcs
-- `arc_width = 0.08`: Width of arc segments
+- `arc_width = 0.06`: Width of arc segments
 
 ## Arc and gap layout
-- `gap_fraction = 0.03`: Fraction of circle reserved for gaps
+- `gap_fraction = 0.02`: Fraction of circle reserved for gaps
 - `arc_scale = 1.0`: Scale for arc portion; < 1 adds extra gaps
 - `sort_by = :group`: Order arcs by `:group`, `:value`, or `:none`
 - `label_order = nothing`: Fixed order (overrides `sort_by`)
@@ -133,7 +133,7 @@ Create a chord diagram from co-occurrence data.
 - `colorscheme = :group`: Color scheme (`:group`, `:categorical`, or `AbstractColorScheme`)
 
 ## Opacity (unified)
-- `alpha = 1.0`: Base opacity per component (ribbons, arcs, labels). Accepts `Real`, `Tuple`, or `ComponentAlpha`. Scaling off = fixed opacity; scaling on = upper bound (min_alpha to this).
+- `alpha = ComponentAlpha(ribbons=0.65, arcs=0.95, labels=1.0)`: Base opacity per component (ribbons, arcs, labels). Accepts `Real`, `Tuple`, or `ComponentAlpha`. Scaling off = fixed opacity; scaling on = upper bound (min_alpha to this).
 - `alpha_by_value = false`: Value-based scaling. Accepts `Bool` or `ValueScaling`. This is the **only** toggle for “scale by value” vs “fully opaque”:
   - For each component (ribbons, arcs, labels), **on** → opacity scales by value from `min_alpha` to the component’s base `alpha`; **off** → opacity is that component base alpha (fixed).
   - `false` or unknown → no scaling (all components 1.0). `true` → all components scaled. `ValueScaling(; components=(ribbons=..., arcs=..., labels=...))` → per-component.
@@ -187,10 +187,10 @@ chordplot(cooc; alpha_by_value=ValueScaling(
 @recipe(ChordPlot, cooc) do scene
     Attributes(
         # Geometry
-        inner_radius = 0.92,
+        inner_radius = 0.88,
         outer_radius = 1.0,
-        arc_width = 0.08,
-        gap_fraction = 0.03,
+        arc_width = 0.06,
+        gap_fraction = 0.02,
         arc_scale = 1.0,
         # Order
         sort_by = :group,
@@ -223,7 +223,7 @@ chordplot(cooc; alpha_by_value=ValueScaling(
         # Colors
         colorscheme = :group,
         # Opacity (Real, Tuple, or ComponentAlpha)
-        alpha = 1.0,
+        alpha = ComponentAlpha(ribbons = 0.65, arcs = 0.95, labels = 1.0),
         # Value-based scaling (Bool or ValueScaling). Default ValueScaling(false) so user's ValueScaling is stored (not converted to Bool).
         alpha_by_value = ValueScaling(false),
         # Focus

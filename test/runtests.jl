@@ -681,12 +681,11 @@ using Colors
         @test_throws ArgumentError get_group(cooc, 99)
     end
 
-    @testset "n_layers deprecation alias" begin
+    @testset "nlayers" begin
         layers_arr = cat([0.0 1.0; 1.0 0.0], [0.0 0.5; 0.5 0.0]; dims = 3)
         labels, groups = groups_from((:G => ["a", "b"]))
         cooc = CoOccurrenceLayers(layers_arr, labels, groups; aggregate = :sum)
-        # `n_layers` is deprecated but must still return the correct count for back-compat
-        @test n_layers(cooc) == nlayers(cooc) == 2
+        @test nlayers(cooc) == 2
     end
 
     @testset "aggregate_layers handles Int input" begin
