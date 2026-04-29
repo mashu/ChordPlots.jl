@@ -832,6 +832,306 @@ using Colors
         @test abs_total_flow(cooc, "a") ≈ 3.0
         @test total_flow(cooc, "a")     ≈ -3.0
     end
+
+    @testset "Coverage gaps (branches)" begin
+        @testset "ValueNormalizer log path" begin
+            n = ChordPlots.ValueNormalizer([1.0, 10.0], true)
+            @test n.use_log == true
+            @test ChordPlots.normalize_value(n, 1.0) ≈ 0.0
+            @test ChordPlots.normalize_value(n, 10.0) ≈ 1.0
+        end
+
+        @testset "apply_min_arc_flow filters labels and groups" begin
+            labels, groups = groups_from((:G1 => ["a", "b"], :G2 => ["c"]))
+            # label c has 0 total flow and should be dropped
+            mat = [0.0 2.0 0.0;
+                   2.0 0.0 0.0;
+                   0.0 0.0 0.0]
+            cooc = CoOccurrenceMatrix(mat, labels, groups)
+            filtered, keep = ChordPlots.apply_min_arc_flow(cooc, 0.1)
+            @test keep == [1, 2]
+            @test nlabels(filtered) == 2
+            @test ngroups(filtered) == 1
+            @test filtered.labels == ["a", "b"]
+            @test filtered.groups[1].name === :G1
+        end
+
+        @testset "get_sort_order :none and unknown" begin
+            labels, groups = groups_from((:G => ["a", "b", "c"]))
+            cooc = CoOccurrenceMatrix([0 1 2; 1 0 3; 2 3 0], labels, groups)
+            flows = [abs_total_flow(cooc, i) for i in 1:nlabels(cooc)]
+            @test ChordPlots.get_sort_order(cooc, flows, :none, nothing) == [1, 2, 3]
+            @test_throws Exception ChordPlots.get_sort_order(cooc, flows, :nope, nothing)
+        end
+
+        @testset "ribbon_width_power != 1 triggers power branch" begin
+            labels, groups = groups_from((:G => ["a", "b", "c"]))
+            cooc = CoOccurrenceMatrix([0 5 1; 5 0 2; 1 2 0], labels, groups)
+            layout = compute_layout(cooc, LayoutConfig(ribbon_width_power = 2.0))
+            @test nribbons(layout) == 3
+        end
+
+        @testset "CoOccurrenceLayers stacked decomposition order" begin
+            labels, groups = groups_from((:G => ["a", "b"]))
+            layers = zeros(Float64, 2, 2, 3)
+            layers[1, 2, 1] = 6.0
+            layers[2, 1, 1] = 6.0
+            layers[1, 2, 2] = 2.0
+            layers[2, 1, 2] = 2.0
+            layers[1, 2, 3] = -1.0
+            layers[2, 1, 3] = -1.0
+            cooc = CoOccurrenceLayers(layers, labels, groups; aggregate = :sum)
+
+            cfg_desc = LayoutConfig(layers_pair_span = :stack_layers, layers_stack_order = :value_desc)
+            layout_desc = compute_layout(cooc, cfg_desc)
+            @test nribbons(layout_desc) == 3
+            @test layout_desc.ribbons[1].value == 6.0
+
+            cfg_asc = LayoutConfig(layers_pair_span = :stack_layers, layers_stack_order = :value_asc)
+            layout_asc = compute_layout(cooc, cfg_asc)
+            @test nribbons(layout_asc) == 3
+            @test layout_asc.ribbons[1].value == -1.0
+        end
+
+        @testset "label_position halign branches" begin
+            # Right side, outside justification -> :left
+            arc_r = ArcSegment{Float64}(1, 0.0, 0.2, 1.0)
+            lp_r = label_position(arc_r, 1.0, 0.1; rotate = true, justify = :outside)
+            @test lp_r.halign === :left
+
+            # Left side, outside justification -> :right (after flip)
+            arc_l = ArcSegment{Float64}(1, π, π + 0.2, 1.0)
+            lp_l = label_position(arc_l, 1.0, 0.1; rotate = true, justify = :outside)
+            @test lp_l.halign === :right
+
+            # No rotation -> centered
+            lp_c = label_position(arc_r, 1.0, 0.1; rotate = false)
+            @test lp_c.angle == 0.0
+            @test lp_c.halign === :center
+        end
+
+        @testset "preview_labels ellipsis for long label lists" begin
+            s = ChordPlots.preview_labels(["a", "b", "c", "d", "e"])
+            @test occursin("…", s)
+            @test occursin("a, b, c", s)
+            @test occursin("e", s)
+        end
+
+        @testset "diverging_colors range expansion when min≈max" begin
+            labels, groups = groups_from((:G => ["a", "b"]))
+            cooc = CoOccurrenceMatrix(zeros(Float64, 2, 2), labels, groups)
+            cs = diverging_colors(cooc; symmetric = false)
+            lo, hi = cs.range
+            @test lo < hi
+        end
+
+        @testset "colors branch coverage" begin
+            # coerce_color(Colorant)
+            @test ChordPlots.coerce_color(RGB(0.1, 0.2, 0.3)) isa Colorant
+
+            # categorical scheme else-branch (src_idx == tgt_idx)
+            labels, groups = groups_from((:G => ["a"]))
+            cooc1 = CoOccurrenceMatrix(zeros(Float64, 1, 1), labels, groups)
+            scheme = ChordPlots.categorical_colors(1)
+            ep = RibbonEndpoint{Float64}(1, 0.0, 0.1)
+            self = Ribbon{Float64}(ep, ep, 1.0)
+            @test resolve_ribbon_color(scheme, self, cooc1) == scheme.colors[1]
+
+            # diverging_color branches where one side has no range across 0
+            cs_pos = ChordPlots.DivergingColorScheme(RGB(0, 0, 1), RGB(1, 1, 1), RGB(1, 0, 0), (0.1, 2.0), false)
+            @test ChordPlots.diverging_color(cs_pos, -0.5) isa RGB  # min_val ≥ 0 → t=0 on negative side
+            cs_neg = ChordPlots.DivergingColorScheme(RGB(0, 0, 1), RGB(1, 1, 1), RGB(1, 0, 0), (-2.0, -0.1), false)
+            @test ChordPlots.diverging_color(cs_neg, 0.5) isa RGB   # max_val ≤ 0 → t=0 on positive side
+        end
+
+        @testset "CoOccurrenceLayers per-layer ribbon placement path" begin
+            labels, groups = groups_from((:G => ["a", "b"]))
+            layers = cat([0.0 2.0; 2.0 0.0], [0.0 1.0; 1.0 0.0]; dims = 3)
+            cooc = CoOccurrenceLayers(layers, labels, groups; aggregate = :sum)
+            # power != 1
+            cfg2 = LayoutConfig(layers_pair_span = :per_layer, ribbon_width_power = 2.0)
+            layout2 = compute_layout(cooc, cfg2)
+            @test nribbons(layout2) == 2
+            # power == 1 (hits the linear width branch)
+            cfg1 = LayoutConfig(layers_pair_span = :per_layer, ribbon_width_power = 1.0)
+            layout1 = compute_layout(cooc, cfg1)
+            @test nribbons(layout1) == 2
+        end
+
+        @testset "apply_min_arc_flow for layered data" begin
+            labels, groups = groups_from((:G1 => ["a", "b"], :G2 => ["c"]))
+            layers = zeros(Float64, 3, 3, 2)
+            layers[1, 2, 1] = 1.0
+            layers[2, 1, 1] = 1.0
+            layers[1, 2, 2] = 1.0
+            layers[2, 1, 2] = 1.0
+            cooc = CoOccurrenceLayers(layers, labels, groups; aggregate = :sum)
+            filtered, keep = ChordPlots.apply_min_arc_flow(cooc, 0.1)
+            @test keep == [1, 2]
+            @test nlabels(filtered) == 2
+            @test ngroups(filtered) == 1
+        end
+
+        @testset "apply_min_arc_flow layered early return (no filtering)" begin
+            labels, groups = groups_from((:G => ["a", "b"]))
+            layers = cat([0.0 1.0; 1.0 0.0], [0.0 2.0; 2.0 0.0]; dims = 3)
+            cooc = CoOccurrenceLayers(layers, labels, groups; aggregate = :sum)
+            same, keep = ChordPlots.apply_min_arc_flow(cooc, 0.0)
+            @test same === cooc
+            @test keep === nothing
+        end
+
+        @testset "apply_min_arc_flow layered keep-all with min_flow > 0" begin
+            labels, groups = groups_from((:G => ["a", "b"]))
+            layers = cat([0.0 2.0; 2.0 0.0], [0.0 1.0; 1.0 0.0]; dims = 3)
+            cooc = CoOccurrenceLayers(layers, labels, groups; aggregate = :sum)
+            same, keep = ChordPlots.apply_min_arc_flow(cooc, 1.0)
+            @test same === cooc
+            @test keep === nothing
+        end
+
+        @testset "diverging_colors empty vals default range" begin
+            # nlabels == 0 -> diverging_colors sees empty vals and uses (-1, 1)
+            cooc = CoOccurrenceMatrix(zeros(Float64, 0, 0), String[], GroupInfo{String}[])
+            cs = diverging_colors(cooc)
+            @test cs.range == (-1.0, 1.0)
+        end
+
+        @testset "fixed-pairs layout power branches" begin
+            labels, groups = groups_from((:G => ["a", "b", "c"]))
+            layers = zeros(Float64, 3, 3, 2)
+            layers[1, 2, 1] = 4.0; layers[2, 1, 1] = 4.0
+            layers[1, 3, 1] = 1.0; layers[3, 1, 1] = 1.0
+            layers[2, 3, 2] = 2.0; layers[3, 2, 2] = 2.0
+            cooc = CoOccurrenceLayers(layers, labels, groups; aggregate = :sum)
+
+            # power == 1.0 branch in fixed-segment precompute
+            cfg1 = LayoutConfig(layers_pair_span = :fixed_pairs, ribbon_width_power = 1.0)
+            l1 = compute_layout(cooc, cfg1)
+            @test nribbons(l1) > 0
+
+            # power != 1.0 branch (agg_arc_sum_power)
+            cfg2 = LayoutConfig(layers_pair_span = :fixed_pairs, ribbon_width_power = 2.0)
+            l2 = compute_layout(cooc, cfg2)
+            @test nribbons(l2) > 0
+        end
+
+        @testset "recipe envelope + dimming branches" begin
+            using CairoMakie
+            labels, groups = groups_from((:G => ["a", "b", "c"]))
+            mat = [0.0 3.0 1.0;
+                   3.0 0.0 2.0;
+                   1.0 2.0 0.0]
+            cooc = CoOccurrenceMatrix(mat, labels, groups)
+
+            lo = zeros(Float64, 3, 3)
+            hi = zeros(Float64, 3, 3)
+            hi[1, 2] = hi[2, 1] = 8.0
+            hi[1, 3] = hi[3, 1] = 4.0
+            hi[2, 3] = hi[3, 2] = 5.0
+
+            # Focus a single label -> others are dimmed; custom envelope color -> Makie.to_color path.
+            fig, ax, _ = chordplot(
+                cooc;
+                focus_group = :G,
+                focus_labels = ["a"],
+                ribbon_envelope_low = lo,
+                ribbon_envelope_high = hi,
+                ribbon_envelope_color = :green,
+                ribbon_envelope_mode = :ring,
+                ribbon_envelope_bands = 1,
+                ribbon_envelope_mean = :solid,
+                ribbon_envelope_stroke = 0.5,
+            )
+            @test fig isa Figure
+            @test ax isa Axis
+            # Force evaluation of lifted observables (coverage)
+            CairoMakie.save(tempname() * ".png", fig)
+
+            # Also hit "hairline enabled" helper branch (white half-alpha)
+            fig2, ax2, _ = chordplot(
+                cooc;
+                ribbon_envelope_low = lo,
+                ribbon_envelope_high = hi,
+                ribbon_envelope_mean = :solid,
+                ribbon_envelope_stroke = 0.5,
+            )
+            @test fig2 isa Figure
+            @test ax2 isa Axis
+            CairoMakie.save(tempname() * ".png", fig2)
+
+            # And hit "labels disabled" early return for label data
+            fig3, ax3, _ = chordplot(cooc; show_labels = false)
+            @test fig3 isa Figure
+            @test ax3 isa Axis
+            CairoMakie.save(tempname() * ".png", fig3)
+
+            # Hit :fill mode (Polygon push!) and "no hairline" branch (transparent colors list)
+            fig4, ax4, _ = chordplot(
+                cooc;
+                ribbon_envelope_low = lo,
+                ribbon_envelope_high = hi,
+                ribbon_envelope_color = :green,
+                ribbon_envelope_mode = :fill,
+                ribbon_envelope_bands = 1,
+                ribbon_envelope_mean = :solid,
+                ribbon_envelope_stroke = 0.0,
+            )
+            @test fig4 isa Figure
+            @test ax4 isa Axis
+            CairoMakie.save(tempname() * ".png", fig4)
+        end
+
+        @testset "apply_min_arc_flow early return (no filtering)" begin
+            labels, groups = groups_from((:G => ["a", "b"]))
+            cooc = CoOccurrenceMatrix([0.0 1.0; 1.0 0.0], labels, groups)
+            same, keep = ChordPlots.apply_min_arc_flow(cooc, 0.0)
+            @test same === cooc
+            @test keep === nothing
+        end
+
+        @testset "apply_min_arc_flow keep-all with min_flow > 0" begin
+            labels, groups = groups_from((:G => ["a", "b", "c"]))
+            # All labels have abs_total_flow >= 1.0
+            mat = [0.0 1.0 1.0;
+                   1.0 0.0 1.0;
+                   1.0 1.0 0.0]
+            cooc = CoOccurrenceMatrix(mat, labels, groups)
+            same, keep = ChordPlots.apply_min_arc_flow(cooc, 1.0)
+            @test same === cooc
+            @test keep === nothing
+        end
+
+        @testset "recipe envelope dim + hollow faint-fill=0 branches" begin
+            using CairoMakie
+            labels, groups = groups_from((:G => ["a", "b", "c"]))
+            mat = [0.0 1.0 0.0;
+                   1.0 0.0 2.0;
+                   0.0 2.0 0.0]
+            cooc = CoOccurrenceMatrix(mat, labels, groups)
+
+            lo = zeros(Float64, 3, 3)
+            hi = zeros(Float64, 3, 3)
+            # Only give an envelope to the (b,c) ribbon so it is dimmed by focus_labels=["a"]
+            hi[2, 3] = hi[3, 2] = 5.0
+
+            fig, ax, _ = chordplot(
+                cooc;
+                focus_group = :G,
+                focus_labels = ["a"],          # dims b and c (and their ribbon)
+                ribbon_envelope_low = lo,
+                ribbon_envelope_high = hi,
+                ribbon_envelope_color = nothing, # use base ribbon hue; dimming uses cfg.dim_color
+                ribbon_envelope_mode = :ring,
+                ribbon_envelope_bands = 1,      # hit env_rgba_pair one-band path
+                ribbon_envelope_mean = :hollow,
+                ribbon_envelope_mean_faint_fill = 0.0, # hit transparent-faint-fill branch
+            )
+            @test fig isa Figure
+            @test ax isa Axis
+            CairoMakie.save(tempname() * ".png", fig)
+        end
+    end
 end
 
 println("All tests passed!")
