@@ -1,19 +1,179 @@
-/* Custom styles for ChordPlots.jl documentation */
+/*
+ * ChordPlots.jl: light polish on Documenter's themes. Hero uses the same text colors as
+ * the article (inherit) so light/dark themes stay readable. No separate white panel.
+ */
 
-/* Center images */
-img {
+:root {
+    --cp-radius: 14px;
+    --cp-ring: color-mix(in srgb, CanvasText 14%, transparent);
+    --cp-accent: #2563eb;
+    --cp-accent-end: #4f46e5;
+    /* Hero chips / secondary btn: fixed pairs so they never wash out against body text */
+    --cp-chip-fg: #1e3a8a;
+    --cp-chip-bg: #dbeafe;
+    --cp-chip-border: #3b82f6;
+    --cp-ghost-fg: #1d4ed8;
+    --cp-ghost-border: #2563eb;
+    --cp-ghost-bg-hover: #eff6ff;
+}
+
+.docs-main article.content {
+    max-width: 52rem;
+}
+
+/* Home hero: flows with the page, inherits theme foreground/background */
+.cp-hero {
+    text-align: center;
+    padding: 1rem 0 2.25rem;
+    margin: 0 0 1.5rem;
+    color: inherit;
+    border: none;
+    background: none;
+    box-shadow: none;
+}
+
+.cp-hero h1,
+.cp-hero p.cp-lead {
+    color: inherit;
+}
+
+.cp-hero img {
+    border-radius: 22px;
+    box-shadow:
+        0 4px 20px color-mix(in srgb, CanvasText 12%, transparent),
+        0 0 0 1px var(--cp-ring);
+}
+
+.cp-hero h1 {
+    margin-top: 0.75rem;
+    margin-bottom: 0;
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    font-size: clamp(1.85rem, 4.2vw, 2.35rem);
+    line-height: 1.15;
+}
+
+.cp-hero p.cp-lead {
+    font-size: 1.08rem;
+    max-width: 42rem;
+    margin: 1rem auto 0;
+    line-height: 1.65;
+}
+
+/* Inline types: high contrast vs body text (not “invisible” gray on gray) */
+.cp-hero p.cp-lead code {
+    padding: 0.2em 0.5em;
+    border-radius: 7px;
+    font-size: 0.86em;
+    font-weight: 600;
+    font-family: "JuliaMono", "Consolas", "Monaco", monospace;
+    color: var(--cp-chip-fg);
+    background: var(--cp-chip-bg);
+    border: 1.5px solid var(--cp-chip-border);
+    box-shadow: 0 1px 0 rgba(30, 64, 175, 0.08);
+}
+
+.cp-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.85rem;
+    justify-content: center;
+    margin-top: 1.5rem;
+}
+
+a.cp-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.62rem 1.35rem;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.96rem;
+    text-decoration: none !important;
+    transition:
+        transform 0.15s ease,
+        box-shadow 0.15s ease,
+        filter 0.15s ease;
+}
+
+a.cp-btn-primary {
+    background: linear-gradient(
+        165deg,
+        #3b82f6 0%,
+        var(--cp-accent) 45%,
+        var(--cp-accent-end) 100%
+    );
+    color: #fff !important;
+    box-shadow:
+        0 2px 8px color-mix(in srgb, var(--cp-accent) 35%, transparent),
+        0 8px 28px color-mix(in srgb, var(--cp-accent-end) 28%, transparent);
+}
+
+a.cp-btn-primary:hover {
+    color: #fff !important;
+    transform: translateY(-2px);
+    filter: brightness(1.05);
+}
+
+a.cp-btn-ghost {
+    background: #ffffff;
+    color: var(--cp-ghost-fg) !important;
+    border: 2px solid var(--cp-ghost-border);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+a.cp-btn-ghost:hover {
+    background: var(--cp-ghost-bg-hover);
+    color: #1e3a8a !important;
+    border-color: #1d4ed8;
+}
+
+/* Documenter dark + dark Catppuccin: light text, visible chips and outline button */
+html.theme--documenter-dark,
+html.theme--catppuccin-frappe,
+html.theme--catppuccin-macchiato,
+html.theme--catppuccin-mocha {
+    --cp-chip-fg: #e0f2fe;
+    --cp-chip-bg: #0c4a6e;
+    --cp-chip-border: #38bdf8;
+    --cp-ghost-fg: #93c5fd;
+    --cp-ghost-border: #60a5fa;
+    --cp-ghost-bg-hover: rgba(30, 58, 138, 0.35);
+}
+
+html.theme--documenter-dark a.cp-btn-ghost,
+html.theme--catppuccin-frappe a.cp-btn-ghost,
+html.theme--catppuccin-macchiato a.cp-btn-ghost,
+html.theme--catppuccin-mocha a.cp-btn-ghost {
+    background: rgba(15, 23, 42, 0.35);
+    color: var(--cp-ghost-fg) !important;
+    border-color: var(--cp-ghost-border);
+    box-shadow: none;
+}
+
+html.theme--documenter-dark a.cp-btn-ghost:hover,
+html.theme--catppuccin-frappe a.cp-btn-ghost:hover,
+html.theme--catppuccin-macchiato a.cp-btn-ghost:hover,
+html.theme--catppuccin-mocha a.cp-btn-ghost:hover {
+    background: var(--cp-ghost-bg-hover);
+    color: #dbeafe !important;
+    border-color: #93c5fd;
+}
+
+.docs-main article img {
     display: block;
-    margin: 1em auto;
+    margin: 1.15rem auto;
     max-width: 100%;
     height: auto;
+    border-radius: var(--cp-radius);
+    border: 1px solid var(--cp-ring);
+    box-shadow:
+        0 2px 6px color-mix(in srgb, CanvasText 5%, transparent),
+        0 20px 50px -24px color-mix(in srgb, CanvasText 25%, transparent);
 }
 
-/* Style code blocks */
-pre {
-    border-radius: 4px;
-}
-
-/* Improve readability */
-.docs-main {
-    max-width: 900px;
+.docs-main article.content > h2 {
+    margin-top: 2.25rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--cp-ring);
 }

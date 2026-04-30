@@ -1,28 +1,25 @@
 # Customization
 
-Customize the appearance of your chord diagrams. Parameters are designed to work together: **`alpha`** controls opacity; **`alpha_by_value`** applies strength-based opacity; **focus** dimming affects labels, arcs, and ribbons automatically.
+Main knobs: **`alpha`**, **`alpha_by_value`** ([`ValueScaling`](@ref)), **`focus_*`** (dim other labels).
 
-## Layout Parameters
+## Layout
 
-Control the overall layout:
 
 ```julia
 chordplot!(ax, cooc;
-    inner_radius = 0.92,    # Inner radius for ribbons
+    inner_radius = 0.88,    # Inner radius for ribbons (recipe default)
     outer_radius = 1.0,     # Outer radius for arcs
-    arc_width = 0.08,       # Width of arc segments
-    gap_fraction = 0.03,    # Gap between arcs
+    arc_width = 0.06,       # Width of arc segments (recipe default)
+    gap_fraction = 0.02,    # Gap between arcs (recipe default)
     sort_by = :group,       # :group, :value, or :none
     arc_scale = 1.0,        # Fraction of width for arcs; < 1 adds gaps
     ribbon_width_power = 1.0 # Exponent for ribbon thickness
 )
 ```
 
-**Ribbon thickness** (`ribbon_width_power`): Ribbon widths are scaled as `(value/flow)^power`. Use a value greater than 1 (e.g. `1.5` or `2.0`) to make strong connections visibly thicker and weak ones thinner.
+Width scales as `(value/flow)^ribbon_width_power`; use `> 1` to stretch strong links. `gap_fraction` reserves circle fraction for gaps; `arc_scale < 1` adds extra gap between arc blocks. [`LayoutConfig`](@ref) defaults differ slightly from [`chordplot`](@ref); see docstrings.
 
-**Gaps between arcs** (`gap_fraction` and `arc_scale`): `gap_fraction` reserves that fraction of the circle for gaps. `arc_scale < 1` adds further separation.
-
-## Ribbon Styling
+## Ribbon geometry
 
 ```julia
 chordplot!(ax, cooc;
@@ -42,13 +39,9 @@ chordplot!(ax, cooc_layers;
 )
 ```
 
-## Opacity Control
+## Opacity (`alpha`)
 
-Use **`alpha`** to control opacity. It accepts:
-
-- **Single value**: applies to ribbons, arcs, and labels equally
-- **Tuple `(ribbons, arcs, labels)`**: per-component control  
-- **`ComponentAlpha`**: named fields for clarity
+Scalar (all components), tuple `(ribbons, arcs, labels)`, or [`ComponentAlpha`](@ref).
 
 ```julia
 # All components at 70% opacity
@@ -61,14 +54,11 @@ chordplot!(ax, cooc; alpha = (0.5, 1.0, 1.0))
 chordplot!(ax, cooc; alpha = ComponentAlpha(ribbons=0.5, arcs=1.0, labels=1.0))
 ```
 
-Default is `alpha = 1.0` (fully opaque).
+The recipe default is `ComponentAlpha(ribbons = 0.65, arcs = 0.95, labels = 1.0)`; pass `alpha` to override (see [`chordplot`](@ref)).
 
-## Strength-based Opacity
+## Strength-based opacity (`alpha_by_value`)
 
-Use **`alpha_by_value`** to scale opacity by strength. It accepts:
-
-- **`true`/`false`**: simple on/off with defaults
-- **`ValueScaling`**: full control over which components scale
+`true` / `false`, or [`ValueScaling`](@ref) for per-component scaling.
 
 ```julia
 # Scale all components by value
@@ -77,28 +67,19 @@ chordplot!(ax, cooc; alpha_by_value = true)
 # Full control with ValueScaling
 chordplot!(ax, cooc; alpha_by_value = ValueScaling(
     enabled = true,
-    components = (true, true, false),  # ribbons, arcs, but not labels
+    components = (ribbons = true, arcs = true, labels = false),
     min_alpha = 0.2,
     scale = :log
 ))
 ```
 
-```@raw html
-<img src="../assets/examples/opacity.png" alt="Strength-based Opacity" style="max-width: 600px;"/>
-```
+Rendered figure: **[Gallery — Strength-based opacity](../examples/gallery.md#Strength-based-opacity)**.
 
-### ValueScaling Fields
+[`ValueScaling`](@ref): `enabled`, `components` as `(ribbons, arcs, labels)` or named tuple, `min_alpha`, `scale` (`:linear` / `:log`). Components left `false` stay fully opaque.
 
-- `enabled::Bool`: Whether scaling is active
-- `components::NTuple{3,Bool}`: Which components scale `(ribbons, arcs, labels)`
-- `min_alpha::Float64`: Minimum opacity for weakest values (default: 0.1)
-- `scale::Symbol`: `:linear` or `:log` scaling
+## Focus
 
-Components set to `false` remain **fully opaque** (alpha = 1.0).
-
-## Focus (Dim a Subset of Labels)
-
-Set **`focus_group`** and **`focus_labels`** to highlight specific labels. Non-focused labels in that group are dimmed automatically.
+Highlight a subset: **`focus_group`** + **`focus_labels`** (others in that group dim).
 
 ```julia
 chordplot!(ax, cooc; focus_group = :V_call, focus_labels = ["V1", "V2"])
@@ -127,7 +108,4 @@ chordplot!(ax, cooc;
 )
 ```
 
-**Tips for long labels:**
-- Increase `label_offset` (e.g., 0.18) to move labels further out
-- Use `label_justify = :inside` to align toward circle center
-- Adjust `label_fontsize` based on figure size
+Long labels: raise `label_offset`, try `label_justify = :inside`, or reduce `label_fontsize`.

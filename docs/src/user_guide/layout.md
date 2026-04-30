@@ -1,10 +1,6 @@
 # Layout Configuration
 
-Advanced control over chord diagram layout.
-
-## Custom Layout
-
-Compute layouts manually for advanced control:
+## `LayoutConfig` / `compute_layout`
 
 ```julia
 config = LayoutConfig(
@@ -25,20 +21,9 @@ layout = compute_layout(cooc, config)
 - **`arc_scale`**: Scale factor for the arc (content) portion only; the rest is gap. With `arc_scale = 1.0` the arcs use all of the non-gap space; with `arc_scale < 1` (e.g. `0.7`) arcs use less and gaps grow. So it does not conflict with `gap_fraction` — it adds extra separation on top of it.
 - **`ribbon_width_power`**: Exponent for ribbon thickness: `(value/flow)^power`. Use > 1 (e.g. `1.5` or `2`) to make thick ribbons thicker and thin ones thinner.
 
-**What is a custom layout?** A custom layout allows you to control how labels are arranged around the circle, how arcs are sized, and the spacing between elements. This gives you fine-grained control over the visual appearance beyond the default settings.
+Same options exist as keywords on [`chordplot`](@ref). Doc example (`sort_by = :value`, tighter radii): **[Gallery — Layout by value](../examples/gallery.md#Layout-by-value)**.
 
-```@raw html
-<img src="../assets/examples/layout.png" alt="Custom Layout" style="max-width: 600px;"/>
-```
-
-**What this shows:** This example demonstrates several layout customizations applied together:
-- **`sort_by=:value`** - Labels are sorted by their total flow (largest first), so the most connected labels get the largest arcs and appear first. Compare this to the basic example where labels are sorted by group - here, the most important labels are visually emphasized.
-- **`inner_radius=0.85`** - Ribbons start closer to the center (default is 0.92), creating more space between ribbon endpoints and the outer circle. This gives a different visual balance and can help when you have many connections.
-- **`gap_fraction=0.05`** - Slightly larger gaps between arc segments (default is 0.03), making individual arcs more distinct and easier to identify.
-
-These settings work together to create a layout that emphasizes the most important labels and creates a different visual hierarchy compared to the default group-sorted layout.
-
-## Sorting Options
+## Sorting
 
 - `:group` - Keep groups together, sort within groups by value (default)
 - `:value` - Sort all labels by total flow (descending)

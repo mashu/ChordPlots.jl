@@ -1,9 +1,8 @@
 # Generate example plots for documentation
-# This script is intended to be run via the docs environment:
-# `julia --project=docs docs/generate_examples.jl`
+# Run via the docs environment: `julia --project=docs docs/generate_examples.jl`
+# (also included from `docs/make.jl`)
 using Pkg
 Pkg.activate(@__DIR__)
-# Ensure docs environment uses the *local* ChordPlots checkout (not a registry release).
 Pkg.develop(path = joinpath(@__DIR__, ".."))
 Pkg.resolve()
 Pkg.instantiate()
@@ -11,32 +10,27 @@ using ChordPlots
 using CairoMakie
 using Random
 
-# Set random seed for reproducibility
 Random.seed!(42)
 
-# Publication look for docs (white background)
-set_theme!(merge(theme_light(), Theme(
-    fontsize = 14,
-    figure_padding = (12, 12, 12, 12),
-    backgroundcolor = :white,
-    Axis = (
-        backgroundcolor = :transparent,
-        xgridvisible = false,
-        ygridvisible = false,
-        leftspinevisible = false,
-        rightspinevisible = false,
-        topspinevisible = false,
-        bottomspinevisible = false,
-        titlecolor = :black,
-    ),
-)))
+# Shared Makie theme: package chord_theme + light base (used for every doc figure)
+set_theme!(merge(
+    theme_light(),
+    chord_theme(),
+    Theme(Axis = (titlecolor = :black,)),
+))
 
-# Create output directory
 output_dir = joinpath(@__DIR__, "src", "assets", "examples")
 mkpath(output_dir)
 
-# Ensure CairoMakie is set up for headless rendering
 CairoMakie.activate!(type = "png")
+
+# Default doc chord style: semi-transparent ribbons (readable overlaps), plain arcs — not fully opaque slabs
+const DOC_ALPHA = ComponentAlpha(ribbons = 0.68, arcs = 0.95, labels = 1.0)
+const DOC_PLAIN_ARCS = (
+    arc_strokewidth = 0.0,
+    arc_strokecolor = :transparent,
+    label_color = :black,
+)
 
 # Example 1: Basic chord diagram
 println("Generating basic example...")
@@ -53,118 +47,113 @@ groups_basic = [
     GroupInfo{String}(:J, ["J1"], 6:6),
 ]
 cooc_basic = CoOccurrenceMatrix(mat_basic, labels_basic, groups_basic)
-fig = Figure(size=(600, 600))
-ax = Axis(fig[1,1], title="Basic Chord Diagram")
-chordplot!(ax, cooc_basic;
+fig = Figure(size = (600, 600))
+ax = Axis(fig[1, 1], title = "Basic Chord Diagram")
+chordplot!(
+    ax,
+    cooc_basic;
     inner_radius = 0.88,
     arc_width = 0.055,
     gap_fraction = 0.08,
     arc_scale = 0.92,
     ribbon_tension = 0.55,
     ribbon_width_power = 1.4,
-    alpha = ComponentAlpha(ribbons=0.65, arcs=0.95, labels=1.0),
-    alpha_by_value = ValueScaling(enabled=true, components=(ribbons=true, arcs=true, labels=false)),
+    alpha = DOC_ALPHA,
+    alpha_by_value = ValueScaling(false),
     min_arc_flow = 1e-9,
-    arc_strokewidth = 0.0,
-    arc_strokecolor = :transparent,
-    label_color = :black,
+    DOC_PLAIN_ARCS...,
 )
 setup_chord_axis!(ax)
 save(joinpath(output_dir, "basic.png"), fig)
 
 # Example 2: Decluttered / filtered
 println("Generating filtered example...")
-fig = Figure(size=(600, 600))
-ax = Axis(fig[1,1], title="Decluttered")
-chordplot!(ax, cooc_basic;
+fig = Figure(size = (600, 600))
+ax = Axis(fig[1, 1], title = "Decluttered")
+chordplot!(
+    ax,
+    cooc_basic;
     inner_radius = 0.88,
     arc_width = 0.055,
     gap_fraction = 0.10,
     arc_scale = 0.92,
     ribbon_tension = 0.55,
     ribbon_width_power = 1.6,
-    alpha_by_value = ValueScaling(enabled=true, components=(ribbons=true, arcs=true, labels=false)),
-    alpha = ComponentAlpha(ribbons=0.65, arcs=0.95, labels=1.0),
-    # Hide low-flow arcs (and their labels) to reduce clutter
+    alpha_by_value = ValueScaling(enabled = true, components = (ribbons = true, arcs = true, labels = false)),
+    alpha = DOC_ALPHA,
     min_arc_flow = 6.0,
-    # Hide very weak ribbons too
     min_ribbon_value = 2.5,
-    arc_strokewidth = 0.0,
-    arc_strokecolor = :transparent,
-    label_color = :black,
+    DOC_PLAIN_ARCS...,
 )
 setup_chord_axis!(ax)
 save(joinpath(output_dir, "filtered.png"), fig)
 
-# Example 3: Strength-based opacity (ribbons, arcs, labels)
+# Example 3: Strength-based opacity (emphasis demo — stronger ValueScaling than baseline DOC_ALPHA alone)
 println("Generating opacity example...")
-fig = Figure(size=(600, 600))
-ax = Axis(fig[1,1], title="Strength-based Opacity")
-chordplot!(ax, cooc_basic;
+fig = Figure(size = (600, 600))
+ax = Axis(fig[1, 1], title = "Strength-based Opacity")
+chordplot!(
+    ax,
+    cooc_basic;
     inner_radius = 0.88,
     arc_width = 0.055,
     gap_fraction = 0.08,
     arc_scale = 0.92,
     ribbon_width_power = 1.6,
-    alpha_by_value = ValueScaling(enabled=true, components=(ribbons=true, arcs=true, labels=false)),
-    alpha = ComponentAlpha(ribbons=0.7, arcs=0.95, labels=1.0),
-    arc_strokewidth = 0.0,
-    arc_strokecolor = :transparent,
-    label_color = :black,
+    alpha_by_value = ValueScaling(enabled = true, components = (ribbons = true, arcs = true, labels = false)),
+    alpha = ComponentAlpha(ribbons = 0.7, arcs = 0.95, labels = 1.0),
+    DOC_PLAIN_ARCS...,
 )
 setup_chord_axis!(ax)
 save(joinpath(output_dir, "opacity.png"), fig)
 
 # Example 4: Categorical colors
 println("Generating categorical colors example...")
-fig = Figure(size=(600, 600))
-ax = Axis(fig[1,1], title="Categorical Colors")
-chordplot!(ax, cooc_basic;
+fig = Figure(size = (600, 600))
+ax = Axis(fig[1, 1], title = "Categorical Colors")
+chordplot!(
+    ax,
+    cooc_basic;
     colorscheme = :categorical,
     inner_radius = 0.88,
     arc_width = 0.055,
     gap_fraction = 0.08,
     arc_scale = 0.92,
     ribbon_width_power = 1.4,
-    alpha_by_value = ValueScaling(enabled=true, components=(ribbons=true, arcs=true, labels=false)),
-    alpha = ComponentAlpha(ribbons=0.62, arcs=0.95, labels=1.0),
-    arc_strokewidth = 0.0,
-    arc_strokecolor = :transparent,
-    label_color = :black,
+    alpha_by_value = ValueScaling(enabled = true, components = (ribbons = true, arcs = true, labels = false)),
+    alpha = ComponentAlpha(ribbons = 0.62, arcs = 0.95, labels = 1.0),
+    DOC_PLAIN_ARCS...,
 )
 setup_chord_axis!(ax)
 save(joinpath(output_dir, "categorical.png"), fig)
 
 # Example 5: Custom layout
 println("Generating custom layout example...")
-fig = Figure(size=(600, 600))
-ax = Axis(fig[1,1], title="Custom Layout")
-chordplot!(ax, cooc_basic;
+fig = Figure(size = (600, 600))
+ax = Axis(fig[1, 1], title = "Custom Layout")
+chordplot!(
+    ax,
+    cooc_basic;
     sort_by = :value,
     inner_radius = 0.86,
     arc_width = 0.05,
     gap_fraction = 0.10,
     arc_scale = 0.90,
     ribbon_width_power = 1.7,
-    alpha_by_value = ValueScaling(enabled=true, components=(ribbons=true, arcs=true, labels=false)),
-    alpha = ComponentAlpha(ribbons=0.68, arcs=0.95, labels=1.0),
-    arc_strokewidth = 0.0,
-    arc_strokecolor = :transparent,
-    label_color = :black,
+    alpha_by_value = ValueScaling(enabled = true, components = (ribbons = true, arcs = true, labels = false)),
+    alpha = ComponentAlpha(ribbons = 0.68, arcs = 0.95, labels = 1.0),
+    DOC_PLAIN_ARCS...,
 )
 setup_chord_axis!(ax)
 save(joinpath(output_dir, "layout.png"), fig)
 
-# -----------------------------------------------------------------------------#
 # V/D/J-style shared data: mean matrix, envelope bounds
-# -----------------------------------------------------------------------------#
 mean_mat = [0.0 6.0 2.0 0.0 0.0 0.0
             6.0 0.0 3.0 0.0 0.0 0.0
             2.0 3.0 0.0 0.0 0.0 0.0
             0.0 0.0 0.0 0.0 4.0 1.0
             0.0 0.0 0.0 4.0 0.0 5.0
             0.0 0.0 0.0 1.0 5.0 0.0]
-# Large spread in doc figure so the pale band is unambiguous; geometry also enforces a minimum frill
 s_rel = 0.5
 sd = s_rel .* max.(mean_mat, 1.0)
 for d in 1:6
@@ -186,15 +175,12 @@ envelope_doc_style = (
     arc_scale = 0.92,
     ribbon_tension = 0.55,
     ribbon_width_power = 1.4,
-    alpha = ComponentAlpha(ribbons = 0.9, arcs = 0.95, labels = 1.0),
-    # Fixed opacity on ribbons in the static PNG so envelope vs mean is easy to read
+    alpha = ComponentAlpha(ribbons = 0.78, arcs = 0.95, labels = 1.0),
     alpha_by_value = ValueScaling(false),
-    arc_strokewidth = 0.0,
-    arc_strokecolor = :transparent,
-    label_color = :black,
+    DOC_PLAIN_ARCS...,
 )
 
-# Example 6: Ribbon envelope (explicit tunnel + two-band confidence)
+# Example 6: Ribbon envelope
 println("Generating ribbon envelope example...")
 fig = Figure(size = (600, 600))
 ax = Axis(
@@ -204,7 +190,8 @@ ax = Axis(
     titlealign = :center,
 )
 chordplot!(
-    ax, cooc_e;
+    ax,
+    cooc_e;
     envelope_doc_style...,
     ribbon_envelope_low = envelope_lo,
     ribbon_envelope_high = envelope_hi,
@@ -216,12 +203,9 @@ chordplot!(
 setup_chord_axis!(ax; outer_radius = 1.0, label_offset = 0.12, padding = 0.2)
 save(joinpath(output_dir, "ribbon_envelope.png"), fig)
 
-# -----------------------------------------------------------------------------#
 # Example 7: CoOccurrenceLayers — union labels across donors
-# -----------------------------------------------------------------------------#
 println("Generating CoOccurrenceLayers (union labels across donors) example...")
 
-# V/D/J-style labels (gene segments / calls) for docs
 labels_u = [
     "IGHV1-2", "IGHV1-3", "IGHV2-8",
     "IGHD3-3", "IGHD3-10", "IGHD4-4",
@@ -233,7 +217,6 @@ groups_u = [
     GroupInfo{String}(:J, labels_u[7:9], 7:9),
 ]
 
-# Ten donors: same label universe, slightly different link strengths
 rng = MersenneTwister(7)
 n_u = length(labels_u)
 L = 10
@@ -250,22 +233,16 @@ function add_link!(layers, l2i, a::String, b::String, μ::Float64, σ::Float64, 
 end
 
 for ℓ in 1:L
-    # V–D links (stronger)
     add_link!(layers_u, l2u, "IGHV1-2", "IGHD3-3", 0.30, 0.12, ℓ, rng)
     add_link!(layers_u, l2u, "IGHV1-3", "IGHD3-10", 0.22, 0.10, ℓ, rng)
     add_link!(layers_u, l2u, "IGHV2-8", "IGHD4-4", 0.18, 0.09, ℓ, rng)
     add_link!(layers_u, l2u, "IGHV1-2", "IGHD4-4", 0.12, 0.08, ℓ, rng)
-
-    # D–J links (moderate)
     add_link!(layers_u, l2u, "IGHD3-3", "IGHJ4", 0.20, 0.10, ℓ, rng)
     add_link!(layers_u, l2u, "IGHD3-10", "IGHJ6", 0.16, 0.09, ℓ, rng)
     add_link!(layers_u, l2u, "IGHD4-4", "IGHJ1", 0.14, 0.08, ℓ, rng)
-
-    # A couple weaker cross links
     add_link!(layers_u, l2u, "IGHV2-8", "IGHJ6", 0.07, 0.06, ℓ, rng)
 end
 
-# Arcs from aggregate (sum across donors), ribbons from individual donors
 cooc_layers = CoOccurrenceLayers(layers_u, labels_u, groups_u; aggregate = :sum)
 cs_ld = group_colors(cooc_layers)
 
@@ -289,9 +266,7 @@ chordplot!(
     alpha = ComponentAlpha(ribbons = 0.2, arcs = 0.95, labels = 1.0),
     layers_pair_span = :stack_layers,
     layers_stack_order = :given,
-    arc_strokewidth = 0.0,
-    arc_strokecolor = :transparent,
-    label_color = :black,
+    DOC_PLAIN_ARCS...,
     min_arc_flow = 1e-9,
     min_ribbon_value = 0.0,
 )

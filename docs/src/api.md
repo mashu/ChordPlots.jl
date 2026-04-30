@@ -1,12 +1,10 @@
 # API Reference
 
-Complete reference for the package's exported types and functions, grouped by purpose.
+Exported types and functions by topic. Full kwargs for plotting live on [`chordplot`](@ref).
 
 ## Plotting
 
-The single entry point. `chordplot` builds a new figure; `chordplot!` draws into an
-existing axis. Both accept the same keyword arguments — see the `chordplot`
-docstring for the full list.
+[`chordplot`](@ref) can create a figure or use `chordplot!` in an existing axis.
 
 ```@docs
 chordplot
@@ -14,12 +12,9 @@ setup_chord_axis!
 chord_theme
 ```
 
-`chordplot!(ax, cooc; kwargs...)` is the in-place form of [`chordplot`](@ref) and accepts the same keyword arguments.
-
 ## Data Types
 
-User-facing data containers. `groups_from` is the recommended way to assemble a
-labelled-group structure without bookkeeping the per-group index ranges yourself.
+Use [`groups_from`](@ref) to build label lists and group ranges in one step.
 
 ```@docs
 AbstractChordData

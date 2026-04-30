@@ -1,12 +1,8 @@
 # Comparing Matrices
 
-Compare two co-occurrence matrices to visualize what changed between conditions
-(e.g., before vs after treatment, wild-type vs knockout).
+Use a **signed** matrix you computed elsewhere with [`diff_colors`](@ref) / [`diverging_colors`](@ref) so ribbons and arcs share one diverging scale:
 
-## Signed Differences with Diverging Colors
-
-Provide a **signed** weight matrix (computed externally) and use `diff_colors()` (or
-`diverging_colors()`) to show increases vs decreases with a diverging colormap:
+## Signed differences (`diff_colors`)
 
 ```julia
 using CairoMakie, ChordPlots
@@ -26,23 +22,9 @@ ax.title = "Changes: After - Before"
 fig
 ```
 
-The colormap uses the same diverging scale for both ribbons and arcs:
+**Ribbons:** blue = decrease, white ≈ 0, red = increase. **Arcs:** net depletion (blue) vs enrichment (red) per label.
 
-**Ribbons** (connections):
-- **Blue**: connections that decreased (negative difference)
-- **White/neutral**: little or no change
-- **Red**: connections that increased (positive difference)
-
-**Arcs** (labels):
-- **Blue arc**: label with overall **depleted** connections (net negative change)
-- **White arc**: label with balanced changes (net ≈ zero)
-- **Red arc**: label with overall **enriched** connections (net positive change)
-
-This makes it easy to see at a glance which genes/labels gained or lost connections overall.
-
-## Customizing Colors
-
-You can customize the diverging color scheme:
+## Custom diverging colors
 
 ```julia
 using Colors  # for RGB
@@ -67,11 +49,7 @@ d_abs = CoOccurrenceMatrix(matrix_abs, labels, groups)
 chordplot(d_abs; colorscheme = gradient_colors(; colormap = :Reds, min_val = 0.0, max_val = maximum(matrix_abs)))
 ```
 
-## Understanding the Direction
-
-The sign convention is whatever you choose when preparing your signed weights.
-
-## Combined Workflow
+## Workflow sketch
 
 A typical comparison workflow (all preprocessing external):
 
@@ -105,5 +83,5 @@ fig
 
 ## Notes
 
-- ChordPlots does not normalize or align datasets for you; decide on label sets and
-  any normalization in your preprocessing pipeline.
+- Sign convention for comparisons is yours when building the signed matrix.
+- ChordPlots does not merge or normalize datasets; align labels and scales in preprocessing.

@@ -1,8 +1,6 @@
 # Basic Plotting
 
-Learn how to create and customize chord diagrams.
-
-## Simple Plot
+## With an axis
 
 ```julia
 fig = Figure(size=(800, 800))
@@ -12,13 +10,9 @@ setup_chord_axis!(ax)
 fig
 ```
 
-```@raw html
-<img src="../assets/examples/basic.png" alt="Basic Plot" style="max-width: 600px;"/>
-```
+[`chordplot`](@ref) defaults to semi-transparent ribbons; adjust `alpha` / `alpha_by_value` if needed. Examples: **[Gallery](../examples/gallery.md)**.
 
-## Standalone Plot
-
-You can also create a plot without explicitly creating an axis:
+## One-liner
 
 ```julia
 fig, ax, plt = chordplot(cooc)
@@ -26,18 +20,12 @@ setup_chord_axis!(ax)
 fig
 ```
 
-## Essential Setup
+## `setup_chord_axis!`
 
-Always call `setup_chord_axis!` after plotting to:
-- Set equal aspect ratio
-- Remove axis decorations
-- Set appropriate limits
+Call after every chord plot: square aspect, no decorations, sensible limits.
 
 ```julia
-setup_chord_axis!(ax; padding=0.2)  # padding controls margin around plot
+setup_chord_axis!(ax; padding=0.2)
 ```
 
-## Providing Data
-
-ChordPlots expects you to provide a `CoOccurrenceMatrix` (weights are user-defined: counts,
-frequencies, scores, etc.). The package does not perform data preprocessing.
+Input data is always a [`CoOccurrenceMatrix`](@ref) or [`CoOccurrenceLayers`](@ref) you built upstream ([Creating Data](creating_data.md)).

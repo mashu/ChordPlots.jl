@@ -1,13 +1,10 @@
 # Creating Co-occurrence Data
 
-ChordPlots is a plotting package: **you provide the data** (counts, frequencies, scores, etc.).
-The package does not assume any normalization scheme and does not compute co-occurrence matrices
-from tabular data.
+You pass a weight matrix (counts, frequencies, scores, etc.); ChordPlots does not normalize or build matrices from tables.
 
-## From Raw Matrices (recommended)
+## Matrices and groups
 
-Create a `CoOccurrenceMatrix` directly from your preprocessed weights. For multiple groups,
-use `groups_from` so you don't have to bookkeep per-group index ranges by hand:
+Use [`groups_from`](@ref) unless you already have [`GroupInfo`](@ref) ranges worked out:
 
 ```julia
 matrix = [0 10 2;
@@ -19,8 +16,7 @@ labels, groups = groups_from((:Group1 => ["A", "B"], :Group2 => ["C"]))
 cooc = CoOccurrenceMatrix(matrix, labels, groups)
 ```
 
-If you prefer the explicit form (e.g. for an existing label vector), the original
-constructor still works:
+Explicit constructor:
 
 ```julia
 labels = ["A", "B", "C"]
@@ -31,17 +27,17 @@ groups = [
 cooc = CoOccurrenceMatrix(matrix, labels, groups)
 ```
 
-## Several layers (e.g. one matrix per donor)
+## Layers (e.g. one matrix per donor)
 
-If each observation (donor, batch, etc.) has its own `n×n` matrix in a **common value range**,
-pack them as `layers[i, j, ℓ]`.
+Stack matrices as `layers[i, j, ℓ]` (same `n` and comparable scale). Ribbon placement:
 
-For visualization you can choose how per-donor ribbons attach to arcs:
-- `layers_pair_span = :per_layer`: each donor independently partitions each arc (pair endpoints may shift)
-- `layers_pair_span = :fixed_pairs`: each pair gets a fixed arc segment from the aggregate; donors draw within it
-- `layers_pair_span = :stack_layers`: each pair gets a fixed arc segment and donors **partition** it (true stacked decomposition)
+| `layers_pair_span` | Effect |
+|--------------------|--------|
+| `:per_layer` | Each layer partitions arcs independently (endpoints can shift). |
+| `:fixed_pairs` | Fixed arc segment per pair from the aggregate; donors stay inside it. |
+| `:stack_layers` | Fixed segment per pair; donors split it (stacked). |
 
-Use **translucent** ribbon `alpha` (or `alpha_by_value`) when drawing many donors so overlap remains readable.
+Use lower ribbon `alpha` (and/or `alpha_by_value`) when many layers overlap.
 
 ```julia
 layers = cat([0.0 0.3; 0.0 0.0], [0.0 0.2; 0.0 0.0]; dims=3)  # 2×2×2, upper triangle only
@@ -49,13 +45,6 @@ cooc = CoOccurrenceLayers(layers, ["A", "B"], [GroupInfo{String}(:G, ["A", "B"],
 # cooc.matrix is the sum over layers (used for net flow on arcs, etc.)
 ```
 
-For a generated **single-plot** showcase over the **union** of labels across donors, see **[Multiple layers (donors)](../examples/cooccurrence_layers.md)**.
+Example with several donors: **[Multiple layers](../examples/cooccurrence_layers.md)**.
 
-## What values should you put in `matrix`?
-
-- **Counts**: raw co-occurrence counts
-- **Frequencies**: counts normalized however you prefer
-- **Scores**: e.g. mutual information, correlations, signed differences, etc.
-
-ChordPlots will **respect your values** and only map them to visual properties (width/opacity/colors)
-according to the plot settings you choose.
+**Values:** anything nonnegative you define (counts, normalized frequencies, scores). ChordPlots maps them to thickness/opacity/color via kwargs, not via its own normalization.

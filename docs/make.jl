@@ -43,6 +43,7 @@ makedocs(
             "Comparing Matrices" => "user_guide/comparison.md",
         ],
         "Examples" => [
+            "Gallery" => "examples/gallery.md",
             "Basic Example" => "examples/basic.md",
             "Ribbon envelope" => "examples/ribbon_envelope.md",
             "Multiple layers (donors)" => "examples/cooccurrence_layers.md",

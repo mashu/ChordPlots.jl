@@ -1,32 +1,24 @@
 # Color Schemes
 
-ChordPlots uses modern, professional color palettes by default.
+Default palette is group-based (Wong-style, colorblind-oriented).
 
-## Group-based Colors (Default)
-
-Colors are assigned by group (column), using the Wong colorblind-friendly palette:
+## Group colors (default)
 
 ```julia
 chordplot!(ax, cooc; colorscheme = :group)
 ```
 
-## Categorical Colors
+## Categorical (`:categorical`)
 
-Each label gets a distinct color:
+One color per label:
 
 ```julia
 chordplot!(ax, cooc; colorscheme = :categorical)
 ```
 
-```@raw html
-<img src="../assets/examples/categorical.png" alt="Categorical Colors" style="max-width: 600px;"/>
-```
+**Gallery:** **[Categorical](../examples/gallery.md#Categorical-colors)**. Ribbons mix endpoint hues; you lose the single-hue-per-group cue from `:group`.
 
-**What this shows:** This example uses `colorscheme=:categorical`, which assigns a distinct color to each individual label rather than grouping by category. Compare this to the basic example where all V labels share one color, all D labels another, etc. Here, every label (V1, V2, V3, D1, D2, J1, J2) gets its own unique color from the palette. This makes it easier to distinguish individual labels at a glance, but you lose the visual grouping by category. Ribbons blend the colors of their source and target labels, creating a gradient effect that shows which specific labels are connected.
-
-## Custom Color Schemes
-
-Create your own color scheme:
+## Custom schemes
 
 ```julia
 # Custom group colors

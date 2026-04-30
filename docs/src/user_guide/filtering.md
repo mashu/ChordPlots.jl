@@ -1,10 +1,8 @@
-# Filtering and Data Management
+# Filtering
 
-Filter data to reduce clutter and focus on important relationships.
+## Thresholds from the value distribution
 
-## Choosing a Threshold
-
-When filtering by value (e.g. `min_ribbon_value`), it helps to inspect the distribution of values first. Use the built-in value histogram:
+Inspect values before picking cutoffs:
 
 ```julia
 # Single matrix: histogram of all co-occurrence values (upper triangle, non-zero)
@@ -28,27 +26,19 @@ vals = cooccurrence_values(cooc)
 chordplot!(ax, cooc; min_ribbon_value = 5)
 ```
 
-## Filtering Small Segments
+## Arcs (`min_arc_flow`)
 
-When you have many labels with small co-occurrence values, they can cluster together and overlap:
+Drop weak arcs (and their labels):
 
 ```julia
-chordplot!(ax, cooc;
-    min_arc_flow = 10  # Only show arcs with total flow >= 10
-)
+chordplot!(ax, cooc; min_arc_flow = 10)
 ```
 
-This removes both the arc and its label, reducing clutter.
+Example: **[Gallery — Filtered](../examples/gallery.md#Filtered)**.
 
-```@raw html
-<img src="../assets/examples/filtered.png" alt="Filtered Data" style="max-width: 600px;"/>
-```
+## Ribbon layout filters
 
-**What this shows:** Filtering helps focus attention on the strongest relationships and is particularly useful when working with large datasets where many labels have only weak connections that would otherwise create visual clutter.
-
-## Filtering Ribbons
-
-Filter ribbons in the layout:
+Inspect or trim ribbons without changing `cooc`:
 
 ```julia
 layout = compute_layout(cooc)

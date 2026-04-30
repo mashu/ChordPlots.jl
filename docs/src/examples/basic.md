@@ -1,6 +1,8 @@
 # Basic Example
 
-A simple example showing how to create a chord diagram.
+Minimal `chordplot!` for the V/D/J toy matrix used in the doc build. The **rendered figure** (shared doc theme, semi-transparent ribbons) is on the **[Gallery](gallery.md#Basic-chord-diagram)** only.
+
+## Code
 
 ```julia
 using CairoMakie, ChordPlots
@@ -19,7 +21,6 @@ groups = [
 ]
 cooc = CoOccurrenceMatrix(matrix, labels, groups)
 
-# Create plot
 fig = Figure(size=(800, 800))
 ax = Axis(fig[1,1], title="Basic Chord Diagram")
 chordplot!(ax, cooc)
@@ -27,8 +28,4 @@ setup_chord_axis!(ax)
 fig
 ```
 
-```@raw html
-<img src="../assets/examples/basic.png" alt="Basic Example" style="max-width: 600px;"/>
-```
-
-**What this shows:** This is the default chord diagram with standard settings. Labels are arranged around the circle grouped by their category (V, D, J), and ribbons connect labels that co-occur. Ribbon thickness represents the co-occurrence frequency. Colors are assigned by group (each category gets a distinct color), and all ribbons use uniform opacity. This is the simplest way to visualize co-occurrence relationships.
+To reproduce the **exact** PNG written by the docs, run **`docs/generate_examples.jl`** (Example 1); it sets explicit geometry and `merge(theme_light(), chord_theme())` like the rest of the gallery.

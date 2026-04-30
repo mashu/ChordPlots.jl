@@ -1,14 +1,12 @@
 # Multiple layers (per donor): V/D/J example
 
-When you have **one co-occurrence matrix per donor** (or batch) in a **shared numeric range**, use `CoOccurrenceLayers`: `layers[i, j, ℓ]` is the strength for pair `(i, j)` in layer `ℓ`.
+When you have **one co-occurrence matrix per donor** (or batch) in a **shared numeric range**, use [`CoOccurrenceLayers`](@ref): `layers[i, j, ℓ]` is the strength for pair `(i, j)` in layer `ℓ`.
 
 This example uses V/D/J-style labels (`IGHV…`, `IGHD…`, `IGHJ…`) with distinct categories. Ribbons are colored by category (V, D, J), and per-donor variation is encoded by different ribbon slice widths for each donor.
 
-**Layout** sizes **arcs** from an **aggregate** (here `aggregate = :sum`, so arcs reflect total signal across donors), then lays out **ribbons per donor**. With `layers_pair_span = :stack_layers`, each label-pair gets a fixed arc segment from the aggregate and the donors **partition** that segment (true stacked decomposition).
+**Figure:** **[Gallery — Stacked per-donor layers](gallery.md#Stacked-per-donor-layers)** (`cooccurrence_layers.png`).
 
-```@raw html
-<img src="../assets/examples/cooccurrence_layers.png" alt="Chord diagram: V/D/J per-donor layers" style="max-width: 780px;"/>
-```
+**Layout** sizes **arcs** from an **aggregate** (here `aggregate = :sum`, so arcs reflect total signal across donors), then lays out **ribbons per donor**. With `layers_pair_span = :stack_layers`, each label-pair gets a fixed arc segment from the aggregate and the donors **partition** that segment (true stacked decomposition).
 
 ## Minimal code (V/D/J groups)
 
@@ -60,4 +58,4 @@ setup_chord_axis!(ax)
 fig
 ```
 
-The full V/D/J showcase figure is Example 7 in `docs/generate_examples.jl`.
+The full showcase figure is Example 7 in `docs/generate_examples.jl`.
